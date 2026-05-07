@@ -155,6 +155,8 @@ function Index() {
             <FileTree
               nodes={tree}
               onFileClick={store.openFile}
+              onCreateFile={store.createFile}
+              onDeleteFile={store.deleteFile}
               activeFile={store.activeTab}
             />
           </div>
