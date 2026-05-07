@@ -39,6 +39,8 @@ export function ChatPanel({
   setApiKey,
   onFileRead,
   onFileEdit,
+  onFileCreate,
+  onFileDelete,
   diffs,
   onRevertDiff,
 }: ChatPanelProps) {

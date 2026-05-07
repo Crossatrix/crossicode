@@ -184,6 +184,8 @@ function Index() {
               setApiKey={store.setApiKey}
               onFileRead={handleFileRead}
               onFileEdit={handleFileEdit}
+              onFileCreate={store.createFile}
+              onFileDelete={store.deleteFile}
               diffs={store.diffs}
               onRevertDiff={store.revertDiff}
             />
