@@ -84,6 +84,33 @@ export function useEditorStore() {
     });
   }, [openTabs]);
 
+  const createFile = useCallback((path: string, content = "") => {
+    setFilesState((prev) => {
+      const next = { ...prev, [path]: content };
+      saveFiles(next);
+      return next;
+    });
+  }, []);
+
+  const deleteFile = useCallback((path: string) => {
+    setFilesState((prev) => {
+      const next = { ...prev };
+      // Delete file or all files under folder path
+      for (const key of Object.keys(next)) {
+        if (key === path || key.startsWith(path + "/")) {
+          delete next[key];
+        }
+      }
+      saveFiles(next);
+      return next;
+    });
+    setOpenTabs((prev) => prev.filter((t) => t !== path && !t.startsWith(path + "/")));
+    setActiveTab((prev) => {
+      if (prev === path || (prev && prev.startsWith(path + "/"))) return null;
+      return prev;
+    });
+  }, []);
+
   const importFiles = useCallback((newFiles: Record<string, string>) => {
     setFiles(newFiles);
     setOpenTabs([]);
@@ -149,6 +176,8 @@ export function useEditorStore() {
     clearAll,
     addDiff,
     revertDiff,
+    createFile,
+    deleteFile,
     filesRef,
   };
 }

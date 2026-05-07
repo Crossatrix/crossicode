@@ -155,6 +155,8 @@ function Index() {
             <FileTree
               nodes={tree}
               onFileClick={store.openFile}
+              onCreateFile={store.createFile}
+              onDeleteFile={store.deleteFile}
               activeFile={store.activeTab}
             />
           </div>
@@ -182,6 +184,8 @@ function Index() {
               setApiKey={store.setApiKey}
               onFileRead={handleFileRead}
               onFileEdit={handleFileEdit}
+              onFileCreate={store.createFile}
+              onFileDelete={store.deleteFile}
               diffs={store.diffs}
               onRevertDiff={store.revertDiff}
             />
