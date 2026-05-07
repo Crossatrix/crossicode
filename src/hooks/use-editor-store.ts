@@ -1,0 +1,154 @@
+import { useState, useCallback, useRef, useEffect } from "react";
+import { loadFiles, saveFiles, clearFiles, type VirtualFile } from "../lib/file-system";
+
+export interface DiffEntry {
+  id: string;
+  path: string;
+  before: string;
+  after: string;
+  timestamp: number;
+  reverted: boolean;
+}
+
+const CHAT_KEY = "code-editor-chat";
+const DIFF_KEY = "code-editor-diffs";
+const API_KEY_KEY = "code-editor-api-key";
+
+export interface ChatMessage {
+  role: "user" | "assistant" | "system";
+  content: string;
+}
+
+export function useEditorStore() {
+  const [files, setFilesState] = useState<Record<string, string>>(loadFiles);
+  const [openTabs, setOpenTabs] = useState<string[]>([]);
+  const [activeTab, setActiveTab] = useState<string | null>(null);
+  const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    try {
+      const raw = localStorage.getItem(CHAT_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [diffs, setDiffs] = useState<DiffEntry[]>(() => {
+    try {
+      const raw = localStorage.getItem(DIFF_KEY);
+      return raw ? JSON.parse(raw) : [];
+    } catch {
+      return [];
+    }
+  });
+  const [apiKey, setApiKeyState] = useState(() => localStorage.getItem(API_KEY_KEY) || "");
+
+  const filesRef = useRef(files);
+  filesRef.current = files;
+
+  useEffect(() => {
+    localStorage.setItem(CHAT_KEY, JSON.stringify(chatMessages));
+  }, [chatMessages]);
+
+  useEffect(() => {
+    localStorage.setItem(DIFF_KEY, JSON.stringify(diffs));
+  }, [diffs]);
+
+  const setFiles = useCallback((newFiles: Record<string, string>) => {
+    setFilesState(newFiles);
+    saveFiles(newFiles);
+  }, []);
+
+  const updateFile = useCallback((path: string, content: string) => {
+    setFilesState((prev) => {
+      const next = { ...prev, [path]: content };
+      saveFiles(next);
+      return next;
+    });
+  }, []);
+
+  const openFile = useCallback((path: string) => {
+    setOpenTabs((prev) => (prev.includes(path) ? prev : [...prev, path]));
+    setActiveTab(path);
+  }, []);
+
+  const closeTab = useCallback((path: string) => {
+    setOpenTabs((prev) => {
+      const next = prev.filter((p) => p !== path);
+      return next;
+    });
+    setActiveTab((prev) => {
+      if (prev === path) {
+        const tabs = openTabs.filter((p) => p !== path);
+        return tabs.length > 0 ? tabs[tabs.length - 1] : null;
+      }
+      return prev;
+    });
+  }, [openTabs]);
+
+  const importFiles = useCallback((newFiles: Record<string, string>) => {
+    setFiles(newFiles);
+    setOpenTabs([]);
+    setActiveTab(null);
+  }, [setFiles]);
+
+  const clearAll = useCallback(() => {
+    clearFiles();
+    setFilesState({});
+    setOpenTabs([]);
+    setActiveTab(null);
+    setChatMessages([]);
+    setDiffs([]);
+  }, []);
+
+  const setApiKey = useCallback((key: string) => {
+    setApiKeyState(key);
+    localStorage.setItem(API_KEY_KEY, key);
+  }, []);
+
+  const addDiff = useCallback((path: string, before: string, after: string) => {
+    const entry: DiffEntry = {
+      id: crypto.randomUUID(),
+      path,
+      before,
+      after,
+      timestamp: Date.now(),
+      reverted: false,
+    };
+    setDiffs((prev) => [entry, ...prev]);
+    return entry;
+  }, []);
+
+  const revertDiff = useCallback((id: string) => {
+    setDiffs((prev) => {
+      const entry = prev.find((d) => d.id === id);
+      if (!entry || entry.reverted) return prev;
+      // Revert the file
+      setFilesState((f) => {
+        const next = { ...f, [entry.path]: entry.before };
+        saveFiles(next);
+        return next;
+      });
+      return prev.map((d) => (d.id === id ? { ...d, reverted: true } : d));
+    });
+  }, []);
+
+  return {
+    files,
+    openTabs,
+    activeTab,
+    chatMessages,
+    setChatMessages,
+    diffs,
+    apiKey,
+    setApiKey,
+    setFiles,
+    updateFile,
+    openFile,
+    closeTab,
+    setActiveTab,
+    importFiles,
+    clearAll,
+    addDiff,
+    revertDiff,
+    filesRef,
+  };
+}
