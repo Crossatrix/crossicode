@@ -14,12 +14,14 @@ interface ChatPanelProps {
   setApiKey: (key: string) => void;
   onFileRead: (path: string) => string | undefined;
   onFileEdit: (path: string, content: string) => void;
+  onFileCreate: (path: string, content?: string) => void;
+  onFileDelete: (path: string) => void;
   diffs: DiffEntry[];
   onRevertDiff: (id: string) => void;
 }
 
 function parseToolCalls(content: string): Array<{ tool: string; args: string }> {
-  const regex = /\[\/\(\s*(read|edit)\s+([\s\S]*?)\s*\)\\\]/g;
+  const regex = /\[\/\(\s*(read|edit|create|delete)\s+([\s\S]*?)\s*\)\\\]/g;
   const calls: Array<{ tool: string; args: string }> = [];
   let match;
   while ((match = regex.exec(content)) !== null) {
@@ -56,11 +58,13 @@ export function ChatPanel({
 
 ${paths.map((p) => `- ${p}`).join("\n")}
 
-You can use tools to read and edit files. Tool format:
+You can use tools to read, edit, create, and delete files. Tool format:
 - To read a file: [/( read <path> )\\]
 - To edit a file: [/( edit <path> <entire new file content> )\\]
+- To create a new file: [/( create <path> <file content> )\\]
+- To delete a file: [/( delete <path> )\\]
 
-When editing, always provide the COMPLETE new file content. Be helpful and concise.`;
+When editing or creating, always provide the COMPLETE file content. Be helpful and concise.`;
   }, [filesRef]);
 
   const processToolCalls = useCallback(
@@ -88,11 +92,27 @@ When editing, always provide the COMPLETE new file content. Be helpful and conci
             onFileEdit(path, newContent);
             results.push(`File \`${path}\` has been updated.`);
           }
+        } else if (call.tool === "create") {
+          const firstNewline = call.args.indexOf("\n");
+          if (firstNewline === -1) {
+            const path = call.args.trim();
+            onFileCreate(path, "");
+            results.push(`File \`${path}\` has been created.`);
+          } else {
+            const path = call.args.substring(0, firstNewline).trim();
+            const newContent = call.args.substring(firstNewline + 1);
+            onFileCreate(path, newContent);
+            results.push(`File \`${path}\` has been created.`);
+          }
+        } else if (call.tool === "delete") {
+          const path = call.args.trim();
+          onFileDelete(path);
+          results.push(`File \`${path}\` has been deleted.`);
         }
       }
       return results.join("\n\n");
     },
-    [onFileRead, onFileEdit]
+    [onFileRead, onFileEdit, onFileCreate, onFileDelete]
   );
 
   const sendMessage = useCallback(async () => {
