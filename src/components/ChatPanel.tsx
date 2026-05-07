@@ -1,0 +1,311 @@
+import { useState, useRef, useEffect, useCallback } from "react";
+import { Send, Settings, Trash2, Bot, User, Loader2 } from "lucide-react";
+import ReactMarkdown from "react-markdown";
+import { chatWithAI } from "../lib/ai-chat.functions";
+import { getFilePaths } from "../lib/file-system";
+import type { ChatMessage, DiffEntry } from "../hooks/use-editor-store";
+
+interface ChatPanelProps {
+  messages: ChatMessage[];
+  setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>;
+  files: Record<string, string>;
+  filesRef: React.MutableRefObject<Record<string, string>>;
+  apiKey: string;
+  setApiKey: (key: string) => void;
+  onFileRead: (path: string) => string | undefined;
+  onFileEdit: (path: string, content: string) => void;
+  diffs: DiffEntry[];
+  onRevertDiff: (id: string) => void;
+}
+
+function parseToolCalls(content: string): Array<{ tool: string; args: string }> {
+  const regex = /\[\/\(\s*(read|edit)\s+([\s\S]*?)\s*\)\\\]/g;
+  const calls: Array<{ tool: string; args: string }> = [];
+  let match;
+  while ((match = regex.exec(content)) !== null) {
+    calls.push({ tool: match[1], args: match[2] });
+  }
+  return calls;
+}
+
+export function ChatPanel({
+  messages,
+  setMessages,
+  files,
+  filesRef,
+  apiKey,
+  setApiKey,
+  onFileRead,
+  onFileEdit,
+  diffs,
+  onRevertDiff,
+}: ChatPanelProps) {
+  const [input, setInput] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showDiffs, setShowDiffs] = useState(false);
+  const scrollRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
+  }, [messages]);
+
+  const getSystemPrompt = useCallback(() => {
+    const paths = getFilePaths(filesRef.current);
+    return `You are an AI code assistant. The user has uploaded a project with the following files:
+
+${paths.map((p) => `- ${p}`).join("\n")}
+
+You can use tools to read and edit files. Tool format:
+- To read a file: [/( read <path> )\\]
+- To edit a file: [/( edit <path> <entire new file content> )\\]
+
+When editing, always provide the COMPLETE new file content. Be helpful and concise.`;
+  }, [filesRef]);
+
+  const processToolCalls = useCallback(
+    async (content: string): Promise<string | null> => {
+      const calls = parseToolCalls(content);
+      if (calls.length === 0) return null;
+
+      const results: string[] = [];
+      for (const call of calls) {
+        if (call.tool === "read") {
+          const path = call.args.trim();
+          const fileContent = onFileRead(path);
+          if (fileContent !== undefined) {
+            results.push(`File \`${path}\`:\n\`\`\`\n${fileContent}\n\`\`\``);
+          } else {
+            results.push(`File \`${path}\` not found.`);
+          }
+        } else if (call.tool === "edit") {
+          const firstNewline = call.args.indexOf("\n");
+          if (firstNewline === -1) {
+            results.push(`Edit failed: no content provided for edit.`);
+          } else {
+            const path = call.args.substring(0, firstNewline).trim();
+            const newContent = call.args.substring(firstNewline + 1);
+            onFileEdit(path, newContent);
+            results.push(`File \`${path}\` has been updated.`);
+          }
+        }
+      }
+      return results.join("\n\n");
+    },
+    [onFileRead, onFileEdit]
+  );
+
+  const sendMessage = useCallback(async () => {
+    if (!input.trim() || !apiKey.trim()) return;
+
+    const userMsg: ChatMessage = { role: "user", content: input.trim() };
+    const newMessages = [...messages, userMsg];
+    setMessages(newMessages);
+    setInput("");
+    setLoading(true);
+
+    try {
+      const systemMsg: ChatMessage = { role: "system", content: getSystemPrompt() };
+      const apiMessages = [systemMsg, ...newMessages];
+
+      const result = await chatWithAI({ data: { messages: apiMessages, apiKey } });
+
+      if (result.error) {
+        setMessages((prev) => [
+          ...prev,
+          { role: "assistant", content: `Error: ${result.error}` },
+        ]);
+        return;
+      }
+
+      const assistantMsg: ChatMessage = { role: "assistant", content: result.content };
+      setMessages((prev) => [...prev, assistantMsg]);
+
+      // Process tool calls
+      const toolResult = await processToolCalls(result.content);
+      if (toolResult) {
+        // Send tool results back to AI
+        const followUp: ChatMessage = { role: "user", content: `Tool results:\n${toolResult}` };
+        setMessages((prev) => [...prev, followUp]);
+
+        const followUpMessages = [systemMsg, ...newMessages, assistantMsg, followUp];
+        const followUpResult = await chatWithAI({
+          data: { messages: followUpMessages, apiKey },
+        });
+
+        if (followUpResult.content) {
+          const followUpAssistant: ChatMessage = {
+            role: "assistant",
+            content: followUpResult.content,
+          };
+          setMessages((prev) => [...prev, followUpAssistant]);
+          await processToolCalls(followUpResult.content);
+        }
+      }
+    } catch (err) {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: `Error: ${err instanceof Error ? err.message : "Unknown error"}` },
+      ]);
+    } finally {
+      setLoading(false);
+    }
+  }, [input, apiKey, messages, setMessages, getSystemPrompt, processToolCalls]);
+
+  return (
+    <div className="flex flex-col h-full bg-[#181825] text-foreground">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-[#313244]">
+        <div className="flex items-center gap-2">
+          <Bot className="h-4 w-4 text-blue-400" />
+          <span className="text-sm font-medium">AI Assistant</span>
+        </div>
+        <div className="flex gap-1">
+          <button
+            onClick={() => setShowDiffs(!showDiffs)}
+            className="p-1.5 hover:bg-accent/50 rounded text-xs text-muted-foreground"
+            title="Diff history"
+          >
+            Diffs
+          </button>
+          <button
+            onClick={() => setShowSettings(!showSettings)}
+            className="p-1.5 hover:bg-accent/50 rounded"
+          >
+            <Settings className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+          <button
+            onClick={() => setMessages([])}
+            className="p-1.5 hover:bg-accent/50 rounded"
+            title="Clear chat"
+          >
+            <Trash2 className="h-3.5 w-3.5 text-muted-foreground" />
+          </button>
+        </div>
+      </div>
+
+      {/* Settings */}
+      {showSettings && (
+        <div className="px-3 py-2 border-b border-[#313244] bg-[#11111b]">
+          <label className="text-xs text-muted-foreground block mb-1">OpenRouter API Key</label>
+          <input
+            type="password"
+            value={apiKey}
+            onChange={(e) => setApiKey(e.target.value)}
+            placeholder="sk-or-..."
+            className="w-full text-xs bg-[#1e1e2e] border border-[#313244] rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500"
+          />
+          <p className="text-[10px] text-muted-foreground mt-1">
+            Models: baidu/cobuddy:free → openrouter/owl-alpha (fallback)
+          </p>
+        </div>
+      )}
+
+      {/* Diffs */}
+      {showDiffs && (
+        <div className="px-3 py-2 border-b border-[#313244] bg-[#11111b] max-h-48 overflow-y-auto">
+          <p className="text-xs text-muted-foreground mb-2">Edit History</p>
+          {diffs.length === 0 ? (
+            <p className="text-xs text-muted-foreground/60">No edits yet</p>
+          ) : (
+            diffs.map((d) => (
+              <div key={d.id} className="flex items-center justify-between py-1 text-xs border-b border-[#313244] last:border-0">
+                <div className="flex-1 min-w-0">
+                  <span className="text-blue-400 truncate block">{d.path}</span>
+                  <span className="text-muted-foreground/60">
+                    {new Date(d.timestamp).toLocaleTimeString()}
+                  </span>
+                </div>
+                {d.reverted ? (
+                  <span className="text-yellow-500 text-[10px]">reverted</span>
+                ) : (
+                  <button
+                    onClick={() => onRevertDiff(d.id)}
+                    className="text-red-400 hover:text-red-300 text-[10px] shrink-0 ml-2"
+                  >
+                    undo
+                  </button>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Messages */}
+      <div ref={scrollRef} className="flex-1 overflow-y-auto px-3 py-3 space-y-3">
+        {messages.length === 0 && (
+          <div className="text-center text-muted-foreground/60 text-sm mt-8 space-y-2">
+            <Bot className="h-8 w-8 mx-auto opacity-40" />
+            <p>Upload a project and ask questions about your code.</p>
+            <p className="text-xs">Set your OpenRouter API key in settings ⚙️</p>
+          </div>
+        )}
+        {messages
+          .filter((m) => m.role !== "system")
+          .map((msg, i) => (
+            <div
+              key={i}
+              className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
+            >
+              {msg.role === "assistant" && (
+                <Bot className="h-5 w-5 text-blue-400 shrink-0 mt-1" />
+              )}
+              <div
+                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                  msg.role === "user"
+                    ? "bg-blue-600 text-white"
+                    : "bg-[#1e1e2e] text-foreground"
+                }`}
+              >
+                {msg.role === "assistant" ? (
+                  <div className="prose prose-invert prose-sm max-w-none [&_pre]:bg-[#11111b] [&_pre]:rounded [&_pre]:p-2 [&_code]:text-xs">
+                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                )}
+              </div>
+              {msg.role === "user" && (
+                <User className="h-5 w-5 text-muted-foreground shrink-0 mt-1" />
+              )}
+            </div>
+          ))}
+        {loading && (
+          <div className="flex gap-2 items-center text-muted-foreground">
+            <Bot className="h-5 w-5 text-blue-400" />
+            <Loader2 className="h-4 w-4 animate-spin" />
+            <span className="text-xs">Thinking...</span>
+          </div>
+        )}
+      </div>
+
+      {/* Input */}
+      <div className="px-3 py-2 border-t border-[#313244]">
+        <div className="flex gap-2">
+          <textarea
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                sendMessage();
+              }
+            }}
+            placeholder={apiKey ? "Ask about your code..." : "Set API key first ⚙️"}
+            disabled={!apiKey || loading}
+            rows={2}
+            className="flex-1 text-sm bg-[#1e1e2e] border border-[#313244] rounded-lg px-3 py-2 text-foreground placeholder:text-muted-foreground resize-none focus:outline-none focus:border-blue-500 disabled:opacity-50"
+          />
+          <button
+            onClick={sendMessage}
+            disabled={!input.trim() || !apiKey || loading}
+            className="self-end p-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 rounded-lg transition-colors"
+          >
+            <Send className="h-4 w-4 text-white" />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
