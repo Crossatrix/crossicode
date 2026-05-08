@@ -40,6 +40,21 @@ function Index() {
     [store]
   );
 
+  const handleDownloadZip = useCallback(async () => {
+    const JSZip = (await import("jszip")).default;
+    const zip = new JSZip();
+    for (const [path, content] of Object.entries(store.files)) {
+      zip.file(path, content);
+    }
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "project.zip";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [store.files]);
+
   if (!hasFiles) {
     return (
       <div className="min-h-screen bg-[#11111b] flex items-center justify-center p-4">
