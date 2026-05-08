@@ -161,8 +161,18 @@ export function CodeEditor({
           );
         })}
       </div>
-      {/* Editor */}
-      <div ref={editorRef} className="flex-1 overflow-hidden" />
+      {/* Editor or Image Preview */}
+      {activeTab && isImageFile(activeTab) ? (
+        <div className="flex-1 flex items-center justify-center overflow-auto bg-[#1e1e2e] p-4">
+          <img
+            src={getImageDataUrl(activeTab, activeContent)}
+            alt={activeTab.split("/").pop() || "image"}
+            className="max-w-full max-h-full object-contain rounded shadow-lg"
+          />
+        </div>
+      ) : (
+        <div ref={editorRef} className="flex-1 overflow-hidden" />
+      )}
     </div>
   );
 }
