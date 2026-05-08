@@ -128,40 +128,44 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
 
       const results: string[] = [];
       for (const call of calls) {
-        if (call.tool === "read") {
-          const path = call.args.trim();
-          const fileContent = onFileRead(path);
-          if (fileContent !== undefined) {
-            results.push(`File \`${path}\`:\n\`\`\`\n${fileContent}\n\`\`\``);
-          } else {
-            results.push(`File \`${path}\` not found.`);
-          }
-        } else if (call.tool === "edit") {
-          const firstNewline = call.args.indexOf("\n");
-          if (firstNewline === -1) {
-            results.push(`Edit failed: no content provided for edit.`);
-          } else {
-            const path = call.args.substring(0, firstNewline).trim();
-            const newContent = call.args.substring(firstNewline + 1);
-            onFileEdit(path, newContent);
-            results.push(`File \`${path}\` has been updated.`);
-          }
-        } else if (call.tool === "create") {
-          const firstNewline = call.args.indexOf("\n");
-          if (firstNewline === -1) {
+        try {
+          if (call.tool === "read") {
             const path = call.args.trim();
-            onFileCreate(path, "");
-            results.push(`File \`${path}\` has been created.`);
-          } else {
-            const path = call.args.substring(0, firstNewline).trim();
-            const newContent = call.args.substring(firstNewline + 1);
-            onFileCreate(path, newContent);
-            results.push(`File \`${path}\` has been created.`);
+            const fileContent = onFileRead(path);
+            if (fileContent !== undefined) {
+              results.push(`File \`${path}\`:\n\`\`\`\n${fileContent}\n\`\`\``);
+            } else {
+              results.push(`File \`${path}\` not found.`);
+            }
+          } else if (call.tool === "edit") {
+            const firstNewline = call.args.indexOf("\n");
+            if (firstNewline === -1) {
+              results.push(`Edit failed: no content provided for edit.`);
+            } else {
+              const path = call.args.substring(0, firstNewline).trim();
+              const newContent = call.args.substring(firstNewline + 1);
+              onFileEdit(path, newContent);
+              results.push(`File \`${path}\` has been updated.`);
+            }
+          } else if (call.tool === "create") {
+            const firstNewline = call.args.indexOf("\n");
+            if (firstNewline === -1) {
+              const path = call.args.trim();
+              onFileCreate(path, "");
+              results.push(`File \`${path}\` has been created.`);
+            } else {
+              const path = call.args.substring(0, firstNewline).trim();
+              const newContent = call.args.substring(firstNewline + 1);
+              onFileCreate(path, newContent);
+              results.push(`File \`${path}\` has been created.`);
+            }
+          } else if (call.tool === "delete") {
+            const path = call.args.trim();
+            onFileDelete(path);
+            results.push(`File \`${path}\` has been deleted.`);
           }
-        } else if (call.tool === "delete") {
-          const path = call.args.trim();
-          onFileDelete(path);
-          results.push(`File \`${path}\` has been deleted.`);
+        } catch (err) {
+          results.push(`Tool \`${call.tool}\` failed: ${err instanceof Error ? err.message : "Unknown error"}`);
         }
       }
       return results.join("\n\n");
