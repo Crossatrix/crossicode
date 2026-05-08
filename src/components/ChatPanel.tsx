@@ -111,6 +111,7 @@ new file content here
 file content here
 )]
 [/( delete src/example.ts )]
+[/( search TODO )]
 
 CRITICAL: Every tool call MUST end with )] — a closing parenthesis and closing bracket. If you omit )] the tool will NOT execute.
 
