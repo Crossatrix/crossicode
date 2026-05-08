@@ -75,7 +75,10 @@ export function CodeEditor({
   const activeContent = activeTab ? files[activeTab] ?? "" : "";
 
   useEffect(() => {
-    if (!editorRef.current || !activeTab) return;
+    if (!editorRef.current || !activeTab || isImageFile(activeTab)) {
+      if (viewRef.current) { viewRef.current.destroy(); viewRef.current = null; }
+      return;
+    }
 
     if (viewRef.current) {
       viewRef.current.destroy();
