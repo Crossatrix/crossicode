@@ -60,11 +60,19 @@ export function ChatPanel({
 
 ${paths.map((p) => `- ${p}`).join("\n")}
 
-You can use tools to read, edit, create, and delete files. Tool format:
-- To read a file: [/( read <path> )\\]
-- To edit a file: [/( edit <path> <entire new file content> )\\]
-- To create a new file: [/( create <path> <file content> )\\]
-- To delete a file: [/( delete <path> )\\]
+You can use tools to interact with files. You MUST use the EXACT syntax shown below, including the closing backslash and bracket.
+
+TOOL SYNTAX (copy exactly):
+[/( read src/example.ts )\]
+[/( edit src/example.ts
+new file content here
+)\]
+[/( create src/newfile.ts
+file content here
+)\]
+[/( delete src/example.ts )\]
+
+CRITICAL: Every tool call MUST end with )\] — a closing parenthesis, backslash, and closing bracket. If you omit the )\] the tool will NOT execute.
 
 When editing or creating, always provide the COMPLETE file content. Be helpful and concise.`;
   }, [filesRef]);
