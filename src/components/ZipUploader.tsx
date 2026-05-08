@@ -22,8 +22,9 @@ export function ZipUploader({ onFilesLoaded }: ZipUploaderProps) {
           ([, f]) => !f.dir
         );
 
+        const imageExts = new Set(["png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "ico"]);
+
         for (const [path, zipEntry] of entries) {
-          // Skip binary files, hidden files, node_modules
           if (
             path.includes("node_modules/") ||
             path.includes(".git/") ||
@@ -33,11 +34,17 @@ export function ZipUploader({ onFilesLoaded }: ZipUploaderProps) {
             continue;
 
           try {
-            const content = await zipEntry.async("string");
-            // Remove the top-level folder prefix if all files share one
-            files[path] = content;
+            const ext = path.split(".").pop()?.toLowerCase() || "";
+            if (imageExts.has(ext) && ext !== "svg") {
+              // Store binary images as base64
+              const content = await zipEntry.async("base64");
+              files[path] = content;
+            } else {
+              const content = await zipEntry.async("string");
+              files[path] = content;
+            }
           } catch {
-            // skip binary files
+            // skip unreadable files
           }
         }
 
