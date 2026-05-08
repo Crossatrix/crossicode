@@ -1,12 +1,13 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2, Download } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2, Download, Files, Search } from "lucide-react";
 import { useEditorStore } from "../hooks/use-editor-store";
 import { getFileTree } from "../lib/file-system";
 import { FileTree } from "../components/FileTree";
 import { CodeEditor } from "../components/CodeEditor";
 import { ChatPanel } from "../components/ChatPanel";
 import { ZipUploader } from "../components/ZipUploader";
+import { SearchPanel } from "../components/SearchPanel";
 
 export const Route = createFileRoute("/")({
   component: Index,
