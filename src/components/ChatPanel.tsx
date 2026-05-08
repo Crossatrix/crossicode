@@ -31,7 +31,7 @@ function parseToolCalls(content: string): Array<{ tool: string; args: string }> 
 }
 
 function stripToolCalls(content: string): string {
-  return content.replace(/\[\/\(\s*(read|edit|create|delete)\s+[\s\S]*?\s*\)\]/g, "").trim();
+  return content.replace(/\[\/\(\s*(read|edit|create|delete|search)\s+[\s\S]*?\s*\)\]/g, "").trim();
 }
 
 function getToolSummary(tool: string, args: string): string {
