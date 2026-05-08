@@ -173,16 +173,31 @@ function Index() {
         {/* Sidebar */}
         {sidebarOpen && (
           <div className="w-56 shrink-0 bg-[#181825] border-r border-[#313244] overflow-y-auto py-2">
-            <div className="px-3 pb-2 text-[10px] uppercase tracking-wider text-muted-foreground font-semibold">
-              Explorer
+            <div className="px-2 pb-2 flex items-center gap-1">
+              <button
+                onClick={() => setSidebarMode("files")}
+                className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] uppercase tracking-wider font-semibold ${sidebarMode === "files" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"}`}
+              >
+                <Files className="h-3 w-3" /> Files
+              </button>
+              <button
+                onClick={() => setSidebarMode("search")}
+                className={`flex-1 flex items-center justify-center gap-1 px-2 py-1 rounded text-[10px] uppercase tracking-wider font-semibold ${sidebarMode === "search" ? "bg-accent text-foreground" : "text-muted-foreground hover:bg-accent/50"}`}
+              >
+                <Search className="h-3 w-3" /> Search
+              </button>
             </div>
-            <FileTree
-              nodes={tree}
-              onFileClick={store.openFile}
-              onCreateFile={store.createFile}
-              onDeleteFile={store.deleteFile}
-              activeFile={store.activeTab}
-            />
+            {sidebarMode === "files" ? (
+              <FileTree
+                nodes={tree}
+                onFileClick={store.openFile}
+                onCreateFile={store.createFile}
+                onDeleteFile={store.deleteFile}
+                activeFile={store.activeTab}
+              />
+            ) : (
+              <SearchPanel files={store.files} onFileOpen={store.openFile} />
+            )}
           </div>
         )}
 
