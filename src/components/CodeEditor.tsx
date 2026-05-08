@@ -35,6 +35,30 @@ function getLanguage(path: string) {
   }
 }
 
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "ico"]);
+
+function isImageFile(path: string) {
+  const ext = path.split(".").pop()?.toLowerCase() || "";
+  return IMAGE_EXTS.has(ext);
+}
+
+function getImageDataUrl(path: string, content: string) {
+  const ext = path.split(".").pop()?.toLowerCase() || "";
+  if (ext === "svg") return `data:image/svg+xml;base64,${btoa(content)}`;
+  // For binary images stored as base64 or raw text
+  const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg"
+    : ext === "png" ? "image/png"
+    : ext === "gif" ? "image/gif"
+    : ext === "webp" ? "image/webp"
+    : ext === "bmp" ? "image/bmp"
+    : ext === "ico" ? "image/x-icon"
+    : "image/png";
+  // If content looks like base64, use it directly; otherwise try as-is
+  const isBase64 = /^[A-Za-z0-9+/=\s]+$/.test(content) && content.length > 32;
+  if (isBase64) return `data:${mime};base64,${content.replace(/\s/g, "")}`;
+  return `data:${mime};base64,${btoa(content)}`;
+}
+
 export function CodeEditor({
   files,
   openTabs,
@@ -51,7 +75,10 @@ export function CodeEditor({
   const activeContent = activeTab ? files[activeTab] ?? "" : "";
 
   useEffect(() => {
-    if (!editorRef.current || !activeTab) return;
+    if (!editorRef.current || !activeTab || isImageFile(activeTab)) {
+      if (viewRef.current) { viewRef.current.destroy(); viewRef.current = null; }
+      return;
+    }
 
     if (viewRef.current) {
       viewRef.current.destroy();
@@ -137,8 +164,18 @@ export function CodeEditor({
           );
         })}
       </div>
-      {/* Editor */}
-      <div ref={editorRef} className="flex-1 overflow-hidden" />
+      {/* Editor or Image Preview */}
+      {activeTab && isImageFile(activeTab) ? (
+        <div className="flex-1 flex items-center justify-center overflow-auto bg-[#1e1e2e] p-4">
+          <img
+            src={getImageDataUrl(activeTab, activeContent)}
+            alt={activeTab.split("/").pop() || "image"}
+            className="max-w-full max-h-full object-contain rounded shadow-lg"
+          />
+        </div>
+      ) : (
+        <div ref={editorRef} className="flex-1 overflow-hidden" />
+      )}
     </div>
   );
 }
