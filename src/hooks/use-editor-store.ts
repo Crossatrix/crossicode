@@ -47,11 +47,11 @@ export function useEditorStore() {
   filesRef.current = files;
 
   useEffect(() => {
-    localStorage.setItem(CHAT_KEY, JSON.stringify(chatMessages));
+    try { localStorage.setItem(CHAT_KEY, JSON.stringify(chatMessages)); } catch {}
   }, [chatMessages]);
 
   useEffect(() => {
-    localStorage.setItem(DIFF_KEY, JSON.stringify(diffs));
+    try { localStorage.setItem(DIFF_KEY, JSON.stringify(diffs)); } catch {}
   }, [diffs]);
 
   const setFiles = useCallback((newFiles: Record<string, string>) => {
