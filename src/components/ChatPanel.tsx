@@ -128,41 +128,33 @@ When editing or creating, always provide the COMPLETE file content. Be helpful a
 
     try {
       const systemMsg: ChatMessage = { role: "system", content: getSystemPrompt() };
-      const apiMessages = [systemMsg, ...newMessages];
+      let conversationHistory = [...newMessages];
+      const MAX_TOOL_LOOPS = 10;
 
-      const result = await chatWithAI({ data: { messages: apiMessages, apiKey } });
+      for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
+        const apiMessages = [systemMsg, ...conversationHistory];
+        const result = await chatWithAI({ data: { messages: apiMessages, apiKey } });
 
-      if (result.error) {
-        setMessages((prev) => [
-          ...prev,
-          { role: "assistant", content: `Error: ${result.error}` },
-        ]);
-        return;
-      }
-
-      const assistantMsg: ChatMessage = { role: "assistant", content: result.content };
-      setMessages((prev) => [...prev, assistantMsg]);
-
-      // Process tool calls
-      const toolResult = await processToolCalls(result.content);
-      if (toolResult) {
-        // Send tool results back to AI
-        const followUp: ChatMessage = { role: "user", content: `Tool results:\n${toolResult}` };
-        setMessages((prev) => [...prev, followUp]);
-
-        const followUpMessages = [systemMsg, ...newMessages, assistantMsg, followUp];
-        const followUpResult = await chatWithAI({
-          data: { messages: followUpMessages, apiKey },
-        });
-
-        if (followUpResult.content) {
-          const followUpAssistant: ChatMessage = {
-            role: "assistant",
-            content: followUpResult.content,
-          };
-          setMessages((prev) => [...prev, followUpAssistant]);
-          await processToolCalls(followUpResult.content);
+        if (result.error) {
+          setMessages((prev) => [
+            ...prev,
+            { role: "assistant", content: `Error: ${result.error}` },
+          ]);
+          return;
         }
+
+        const assistantMsg: ChatMessage = { role: "assistant", content: result.content };
+        conversationHistory = [...conversationHistory, assistantMsg];
+        setMessages([...conversationHistory]);
+
+        // Process tool calls
+        const toolResult = await processToolCalls(result.content);
+        if (!toolResult) break; // No more tool calls, done
+
+        // Feed tool results back and loop
+        const toolMsg: ChatMessage = { role: "user", content: `Tool results:\n${toolResult}` };
+        conversationHistory = [...conversationHistory, toolMsg];
+        setMessages([...conversationHistory]);
       }
     } catch (err) {
       setMessages((prev) => [
