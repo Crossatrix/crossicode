@@ -139,6 +139,13 @@ function Index() {
             />
           </label>
           <button
+            onClick={handleDownloadZip}
+            className="p-1.5 hover:bg-accent/50 rounded"
+            title="Download as zip"
+          >
+            <Download className="h-4 w-4 text-muted-foreground" />
+          </button>
+          <button
             onClick={store.clearAll}
             className="p-1.5 hover:bg-accent/50 rounded"
             title="Clear project"
