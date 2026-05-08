@@ -198,7 +198,7 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
       }
       return results.join("\n\n");
     },
-    [onFileRead, onFileEdit, onFileCreate, onFileDelete]
+    [onFileRead, onFileEdit, onFileCreate, onFileDelete, filesRef]
   );
 
   const sendMessage = useCallback(async () => {
