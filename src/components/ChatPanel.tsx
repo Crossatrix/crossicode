@@ -21,7 +21,7 @@ interface ChatPanelProps {
 }
 
 function parseToolCalls(content: string): Array<{ tool: string; args: string }> {
-  const regex = /\[\/\(\s*(read|edit|create|delete)\s+([\s\S]*?)\s*\)\]/g;
+  const regex = /\[\/\(\s*(read|edit|create|delete|search)\s+([\s\S]*?)\s*\)\]/g;
   const calls: Array<{ tool: string; args: string }> = [];
   let match;
   while ((match = regex.exec(content)) !== null) {
