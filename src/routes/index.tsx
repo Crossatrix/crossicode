@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2 } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2, Download } from "lucide-react";
 import { useEditorStore } from "../hooks/use-editor-store";
 import { getFileTree } from "../lib/file-system";
 import { FileTree } from "../components/FileTree";
