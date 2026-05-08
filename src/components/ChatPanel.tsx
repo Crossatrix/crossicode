@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Settings, Trash2, Bot, User, Loader2 } from "lucide-react";
+import { Send, Settings, Trash2, Bot, User, Loader2, ChevronDown, ChevronRight } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { chatWithAI } from "../lib/ai-chat.functions";
 import { getFilePaths } from "../lib/file-system";
@@ -28,6 +28,46 @@ function parseToolCalls(content: string): Array<{ tool: string; args: string }> 
     calls.push({ tool: match[1], args: match[2] });
   }
   return calls;
+}
+
+function stripToolCalls(content: string): string {
+  return content.replace(/\[\/\(\s*(read|edit|create|delete)\s+[\s\S]*?\s*\)\]/g, "").trim();
+}
+
+function getToolSummary(tool: string, args: string): string {
+  const firstLine = args.split("\n")[0].trim();
+  return `${tool} ${firstLine}`;
+}
+
+function ToolCallsBadge({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false);
+  const calls = parseToolCalls(content);
+  if (calls.length === 0) return null;
+
+  return (
+    <div className="mt-1">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex items-center gap-1 text-[10px] text-blue-400 hover:text-blue-300 transition-colors"
+      >
+        {expanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />}
+        {calls.length} tool call{calls.length > 1 ? "s" : ""}
+      </button>
+      {expanded && (
+        <div className="mt-1 space-y-1 text-[10px] text-muted-foreground bg-[#11111b] rounded p-2 max-h-40 overflow-y-auto">
+          {calls.map((c, i) => (
+            <div key={i} className="font-mono">
+              <span className="text-yellow-400">{c.tool}</span>{" "}
+              <span className="text-blue-300">{c.args.split("\n")[0].trim()}</span>
+              {c.tool !== "read" && c.tool !== "delete" && c.args.includes("\n") && (
+                <span className="text-muted-foreground/50"> ({c.args.split("\n").length - 1} lines)</span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 export function ChatPanel({
@@ -60,7 +100,7 @@ export function ChatPanel({
 
 ${paths.map((p) => `- ${p}`).join("\n")}
 
-You can use tools to interact with files. Give a SHORT answer explaining what you're doing, then include tool calls inline.
+You can use tools to interact with files. Give a SHORT answer explaining what you're doing, then include tool calls inline. You can use MULTIPLE tool calls in a single response.
 
 TOOL SYNTAX (copy exactly):
 [/( read src/example.ts )]
@@ -73,6 +113,10 @@ file content here
 [/( delete src/example.ts )]
 
 CRITICAL: Every tool call MUST end with )] — a closing parenthesis and closing bracket. If you omit )] the tool will NOT execute.
+
+You can chain multiple tool calls in one message. For example, read two files at once:
+[/( read src/a.ts )]
+[/( read src/b.ts )]
 
 Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the tools. Do NOT ramble. When editing or creating, provide the COMPLETE file content.`;
   }, [filesRef]);
@@ -155,11 +199,9 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
         conversationHistory = [...conversationHistory, assistantMsg];
         setMessages([...conversationHistory]);
 
-        // Process tool calls
         const toolResult = await processToolCalls(result.content);
-        if (!toolResult) break; // No more tool calls, done
+        if (!toolResult) break;
 
-        // Feed tool results back and loop
         const toolMsg: ChatMessage = { role: "user", content: `Tool results:\n${toolResult}` };
         conversationHistory = [...conversationHistory, toolMsg];
         setMessages([...conversationHistory]);
@@ -265,34 +307,50 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
         )}
         {messages
           .filter((m) => m.role !== "system")
-          .map((msg, i) => (
-            <div
-              key={i}
-              className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
-            >
-              {msg.role === "assistant" && (
-                <Bot className="h-5 w-5 text-blue-400 shrink-0 mt-1" />
-              )}
+          .map((msg, i) => {
+            const isAssistant = msg.role === "assistant";
+            const hasTools = isAssistant && parseToolCalls(msg.content).length > 0;
+            const displayContent = isAssistant ? stripToolCalls(msg.content) : msg.content;
+            const isToolResult = msg.role === "user" && msg.content.startsWith("Tool results:");
+
+            if (isToolResult) return null;
+
+            return (
               <div
-                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
-                  msg.role === "user"
-                    ? "bg-blue-600 text-white"
-                    : "bg-[#1e1e2e] text-foreground"
-                }`}
+                key={i}
+                className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`}
               >
-                {msg.role === "assistant" ? (
-                  <div className="prose prose-invert prose-sm max-w-none [&_pre]:bg-[#11111b] [&_pre]:rounded [&_pre]:p-2 [&_code]:text-xs">
-                    <ReactMarkdown>{msg.content}</ReactMarkdown>
+                {isAssistant && (
+                  <div className="shrink-0 mt-1">
+                    <Bot className="h-5 w-5 text-blue-400" />
                   </div>
-                ) : (
-                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                )}
+                <div
+                  className={`max-w-[85%] rounded-lg px-3 py-2 text-sm ${
+                    msg.role === "user"
+                      ? "bg-blue-600 text-white"
+                      : "bg-[#1e1e2e] text-foreground"
+                  }`}
+                >
+                  {isAssistant ? (
+                    <>
+                      {displayContent && (
+                        <div className="prose prose-invert prose-sm max-w-none [&_pre]:bg-[#11111b] [&_pre]:rounded [&_pre]:p-2 [&_code]:text-xs">
+                          <ReactMarkdown>{displayContent}</ReactMarkdown>
+                        </div>
+                      )}
+                      {hasTools && <ToolCallsBadge content={msg.content} />}
+                    </>
+                  ) : (
+                    <p className="whitespace-pre-wrap">{msg.content}</p>
+                  )}
+                </div>
+                {msg.role === "user" && (
+                  <User className="h-5 w-5 text-muted-foreground shrink-0 mt-1" />
                 )}
               </div>
-              {msg.role === "user" && (
-                <User className="h-5 w-5 text-muted-foreground shrink-0 mt-1" />
-              )}
-            </div>
-          ))}
+            );
+          })}
         {loading && (
           <div className="flex gap-2 items-center text-muted-foreground">
             <Bot className="h-5 w-5 text-blue-400" />
