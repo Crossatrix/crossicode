@@ -26,7 +26,11 @@ export function loadFiles(): Record<string, string> {
 
 export function saveFiles(files: Record<string, string>) {
   if (typeof window === "undefined") return;
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(files));
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(files));
+  } catch (e) {
+    console.warn("Failed to save files to localStorage:", e);
+  }
 }
 
 export function clearFiles() {
