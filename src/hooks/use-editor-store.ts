@@ -24,6 +24,7 @@ export function useEditorStore() {
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window === "undefined") return [];
     try {
       const raw = localStorage.getItem(CHAT_KEY);
       return raw ? JSON.parse(raw) : [];
