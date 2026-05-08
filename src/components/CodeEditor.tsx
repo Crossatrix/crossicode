@@ -35,6 +35,30 @@ function getLanguage(path: string) {
   }
 }
 
+const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "ico"]);
+
+function isImageFile(path: string) {
+  const ext = path.split(".").pop()?.toLowerCase() || "";
+  return IMAGE_EXTS.has(ext);
+}
+
+function getImageDataUrl(path: string, content: string) {
+  const ext = path.split(".").pop()?.toLowerCase() || "";
+  if (ext === "svg") return `data:image/svg+xml;base64,${btoa(content)}`;
+  // For binary images stored as base64 or raw text
+  const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg"
+    : ext === "png" ? "image/png"
+    : ext === "gif" ? "image/gif"
+    : ext === "webp" ? "image/webp"
+    : ext === "bmp" ? "image/bmp"
+    : ext === "ico" ? "image/x-icon"
+    : "image/png";
+  // If content looks like base64, use it directly; otherwise try as-is
+  const isBase64 = /^[A-Za-z0-9+/=\s]+$/.test(content) && content.length > 32;
+  if (isBase64) return `data:${mime};base64,${content.replace(/\s/g, "")}`;
+  return `data:${mime};base64,${btoa(content)}`;
+}
+
 export function CodeEditor({
   files,
   openTabs,
