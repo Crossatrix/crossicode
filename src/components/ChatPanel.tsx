@@ -60,21 +60,21 @@ export function ChatPanel({
 
 ${paths.map((p) => `- ${p}`).join("\n")}
 
-You can use tools to interact with files. You MUST use the EXACT syntax shown below, including the closing backslash and bracket.
+You can use tools to interact with files. Give a SHORT answer explaining what you're doing, then include tool calls inline.
 
 TOOL SYNTAX (copy exactly):
-[/( read src/example.ts )\]
+[/( read src/example.ts )]
 [/( edit src/example.ts
 new file content here
-)\]
+)]
 [/( create src/newfile.ts
 file content here
-)\]
-[/( delete src/example.ts )\]
+)]
+[/( delete src/example.ts )]
 
-CRITICAL: Every tool call MUST end with )\] — a closing parenthesis, backslash, and closing bracket. If you omit the )\] the tool will NOT execute.
+CRITICAL: Every tool call MUST end with )] — a closing parenthesis and closing bracket. If you omit )] the tool will NOT execute.
 
-When editing or creating, always provide the COMPLETE file content. Be helpful and concise.`;
+Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the tools. Do NOT ramble. When editing or creating, provide the COMPLETE file content.`;
   }, [filesRef]);
 
   const processToolCalls = useCallback(
