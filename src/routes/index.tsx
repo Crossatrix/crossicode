@@ -22,6 +22,7 @@ export const Route = createFileRoute("/")({
 function Index() {
   const store = useEditorStore();
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sidebarMode, setSidebarMode] = useState<"files" | "search">("files");
   const [chatOpen, setChatOpen] = useState(true);
 
   const hasFiles = Object.keys(store.files).length > 0;
