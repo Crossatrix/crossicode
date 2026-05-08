@@ -24,6 +24,7 @@ export function useEditorStore() {
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
+    if (typeof window === "undefined") return [];
     try {
       const raw = localStorage.getItem(CHAT_KEY);
       return raw ? JSON.parse(raw) : [];
@@ -32,6 +33,7 @@ export function useEditorStore() {
     }
   });
   const [diffs, setDiffs] = useState<DiffEntry[]>(() => {
+    if (typeof window === "undefined") return [];
     try {
       const raw = localStorage.getItem(DIFF_KEY);
       return raw ? JSON.parse(raw) : [];
@@ -39,7 +41,7 @@ export function useEditorStore() {
       return [];
     }
   });
-  const [apiKey, setApiKeyState] = useState(() => localStorage.getItem(API_KEY_KEY) || "");
+  const [apiKey, setApiKeyState] = useState(() => (typeof window === "undefined" ? "" : localStorage.getItem(API_KEY_KEY) || ""));
 
   const filesRef = useRef(files);
   filesRef.current = files;

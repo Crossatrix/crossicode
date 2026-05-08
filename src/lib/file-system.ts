@@ -15,6 +15,7 @@ export interface FileNode {
 const STORAGE_KEY = "code-editor-files";
 
 export function loadFiles(): Record<string, string> {
+  if (typeof window === "undefined") return {};
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     return raw ? JSON.parse(raw) : {};
@@ -24,10 +25,12 @@ export function loadFiles(): Record<string, string> {
 }
 
 export function saveFiles(files: Record<string, string>) {
+  if (typeof window === "undefined") return;
   localStorage.setItem(STORAGE_KEY, JSON.stringify(files));
 }
 
 export function clearFiles() {
+  if (typeof window === "undefined") return;
   localStorage.removeItem(STORAGE_KEY);
 }
 
