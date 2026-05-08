@@ -21,7 +21,7 @@ interface ChatPanelProps {
 }
 
 function parseToolCalls(content: string): Array<{ tool: string; args: string }> {
-  const regex = /\[\/\(\s*(read|edit|create|delete)\s+([\s\S]*?)\s*\)\]/g;
+  const regex = /\[\/\(\s*(read|edit|create|delete|search)\s+([\s\S]*?)\s*\)\]/g;
   const calls: Array<{ tool: string; args: string }> = [];
   let match;
   while ((match = regex.exec(content)) !== null) {
@@ -31,7 +31,7 @@ function parseToolCalls(content: string): Array<{ tool: string; args: string }> 
 }
 
 function stripToolCalls(content: string): string {
-  return content.replace(/\[\/\(\s*(read|edit|create|delete)\s+[\s\S]*?\s*\)\]/g, "").trim();
+  return content.replace(/\[\/\(\s*(read|edit|create|delete|search)\s+[\s\S]*?\s*\)\]/g, "").trim();
 }
 
 function getToolSummary(tool: string, args: string): string {
@@ -111,6 +111,7 @@ new file content here
 file content here
 )]
 [/( delete src/example.ts )]
+[/( search TODO )]
 
 CRITICAL: Every tool call MUST end with )] — a closing parenthesis and closing bracket. If you omit )] the tool will NOT execute.
 
@@ -163,6 +164,33 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
             const path = call.args.trim();
             onFileDelete(path);
             results.push(`File \`${path}\` has been deleted.`);
+          } else if (call.tool === "search") {
+            const query = call.args.trim();
+            if (!query) {
+              results.push(`Search failed: empty query.`);
+            } else {
+              const lower = query.toLowerCase();
+              const hits: string[] = [];
+              let total = 0;
+              for (const [path, content] of Object.entries(filesRef.current)) {
+                const lines = content.split("\n");
+                const matches: string[] = [];
+                for (let i = 0; i < lines.length; i++) {
+                  if (lines[i].toLowerCase().includes(lower)) {
+                    matches.push(`  ${i + 1}: ${lines[i].trim().slice(0, 200)}`);
+                    total++;
+                    if (total > 100) break;
+                  }
+                }
+                if (matches.length > 0) hits.push(`${path}\n${matches.join("\n")}`);
+                if (total > 100) break;
+              }
+              results.push(
+                hits.length === 0
+                  ? `No matches for \`${query}\`.`
+                  : `Search \`${query}\` — ${total} matches:\n${hits.join("\n\n")}`
+              );
+            }
           }
         } catch (err) {
           results.push(`Tool \`${call.tool}\` failed: ${err instanceof Error ? err.message : "Unknown error"}`);
@@ -170,7 +198,7 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
       }
       return results.join("\n\n");
     },
-    [onFileRead, onFileEdit, onFileCreate, onFileDelete]
+    [onFileRead, onFileEdit, onFileCreate, onFileDelete, filesRef]
   );
 
   const sendMessage = useCallback(async () => {
