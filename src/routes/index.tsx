@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useCallback } from "react";
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2 } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2, Download } from "lucide-react";
 import { useEditorStore } from "../hooks/use-editor-store";
 import { getFileTree } from "../lib/file-system";
 import { FileTree } from "../components/FileTree";
@@ -39,6 +39,21 @@ function Index() {
     },
     [store]
   );
+
+  const handleDownloadZip = useCallback(async () => {
+    const JSZip = (await import("jszip")).default;
+    const zip = new JSZip();
+    for (const [path, content] of Object.entries(store.files)) {
+      zip.file(path, content);
+    }
+    const blob = await zip.generateAsync({ type: "blob" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "project.zip";
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [store.files]);
 
   if (!hasFiles) {
     return (
@@ -123,6 +138,13 @@ function Index() {
               }}
             />
           </label>
+          <button
+            onClick={handleDownloadZip}
+            className="p-1.5 hover:bg-accent/50 rounded"
+            title="Download as zip"
+          >
+            <Download className="h-4 w-4 text-muted-foreground" />
+          </button>
           <button
             onClick={store.clearAll}
             className="p-1.5 hover:bg-accent/50 rounded"
