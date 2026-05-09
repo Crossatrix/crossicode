@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
-import { useState, useCallback } from "react";
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2, Download, Files, Search } from "lucide-react";
+import { useState, useCallback, useEffect } from "react";
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2, Download, Files, Search, Smartphone } from "lucide-react";
 import { useEditorStore } from "../hooks/use-editor-store";
 import { getFileTree } from "../lib/file-system";
 import { FileTree } from "../components/FileTree";
@@ -24,6 +24,38 @@ function Index() {
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sidebarMode, setSidebarMode] = useState<"files" | "search">("files");
   const [chatOpen, setChatOpen] = useState(true);
+  const [installPrompt, setInstallPrompt] = useState<any>(null);
+  const [isInstalled, setIsInstalled] = useState(false);
+
+  useEffect(() => {
+    const onPrompt = (e: Event) => {
+      e.preventDefault();
+      setInstallPrompt(e);
+    };
+    const onInstalled = () => {
+      setInstallPrompt(null);
+      setIsInstalled(true);
+    };
+    window.addEventListener("beforeinstallprompt", onPrompt);
+    window.addEventListener("appinstalled", onInstalled);
+    if (window.matchMedia?.("(display-mode: standalone)").matches) setIsInstalled(true);
+    return () => {
+      window.removeEventListener("beforeinstallprompt", onPrompt);
+      window.removeEventListener("appinstalled", onInstalled);
+    };
+  }, []);
+
+  const handleInstall = useCallback(async () => {
+    if (!installPrompt) {
+      alert(
+        "To install: in Chrome/Edge tap the install icon in the address bar. On iOS Safari, tap Share → Add to Home Screen."
+      );
+      return;
+    }
+    installPrompt.prompt();
+    const { outcome } = await installPrompt.userChoice;
+    if (outcome === "accepted") setInstallPrompt(null);
+  }, [installPrompt]);
 
   const hasFiles = Object.keys(store.files).length > 0;
   const tree = getFileTree(store.files);
