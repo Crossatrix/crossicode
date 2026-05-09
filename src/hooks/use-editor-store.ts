@@ -44,6 +44,7 @@ export function useEditorStore() {
     }
   });
   const [apiKey, setApiKeyState] = useState(() => (typeof window === "undefined" ? "" : localStorage.getItem(API_KEY_KEY) || ""));
+  const [model, setModelState] = useState(() => (typeof window === "undefined" ? DEFAULT_MODEL : localStorage.getItem(MODEL_KEY) || DEFAULT_MODEL));
 
   const filesRef = useRef(files);
   filesRef.current = files;
