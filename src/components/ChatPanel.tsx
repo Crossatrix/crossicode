@@ -246,7 +246,7 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
 
       for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
         const apiMessages = [systemMsg, ...conversationHistory];
-        const result = await chatWithAI({ data: { messages: apiMessages, apiKey } });
+        let result = await chatWithAI({ data: { messages: apiMessages, apiKey, model } });
 
         if (result.error) {
           setMessages((prev) => [
@@ -256,11 +256,34 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
           return;
         }
 
-        const assistantMsg: ChatMessage = { role: "assistant", content: result.content };
+        let assistantContent = result.content;
+
+        // Auto-continue if response was truncated mid tool-call
+        const MAX_CONT = 5;
+        for (let c = 0; c < MAX_CONT; c++) {
+          const truncated =
+            result.finishReason === "length" || hasUnclosedToolCall(assistantContent);
+          if (!truncated) break;
+          const contMessages: ChatMessage[] = [
+            systemMsg,
+            ...conversationHistory,
+            { role: "assistant", content: assistantContent },
+            {
+              role: "user",
+              content:
+                "Your previous message was cut off. Continue from EXACTLY where you stopped — do not repeat any text, do not add explanations, just output the remaining characters and make sure to close the tool call with )] (or </longcat_tool_call>).",
+            },
+          ];
+          result = await chatWithAI({ data: { messages: contMessages, apiKey, model } });
+          if (result.error || !result.content) break;
+          assistantContent += result.content;
+        }
+
+        const assistantMsg: ChatMessage = { role: "assistant", content: assistantContent };
         conversationHistory = [...conversationHistory, assistantMsg];
         setMessages([...conversationHistory]);
 
-        const toolResult = await processToolCalls(result.content);
+        const toolResult = await processToolCalls(assistantContent);
         if (!toolResult) break;
 
         const toolMsg: ChatMessage = { role: "user", content: `Tool results:\n${toolResult}` };
