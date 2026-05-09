@@ -7,12 +7,15 @@ const messageSchema = z.object({
     content: z.string(),
   })),
   apiKey: z.string().min(1),
+  model: z.string().optional(),
 });
 
 export const chatWithAI = createServerFn({ method: "POST" })
   .inputValidator((data: unknown) => messageSchema.parse(data))
   .handler(async ({ data }) => {
-    const models = ["baidu/cobuddy:free", "openrouter/owl-alpha"];
+    const models = data.model
+      ? [data.model, "baidu/cobuddy:free", "openrouter/owl-alpha"]
+      : ["baidu/cobuddy:free", "openrouter/owl-alpha"];
 
     for (const model of models) {
       try {
@@ -25,7 +28,7 @@ export const chatWithAI = createServerFn({ method: "POST" })
           body: JSON.stringify({
             model,
             messages: data.messages,
-            max_tokens: 4096,
+            max_tokens: 32000,
           }),
         });
 
@@ -37,12 +40,13 @@ export const chatWithAI = createServerFn({ method: "POST" })
 
         const json = await res.json();
         const content = json.choices?.[0]?.message?.content || "";
-        return { content, model, error: null };
+        const finishReason = json.choices?.[0]?.finish_reason || null;
+        return { content, model, finishReason, error: null };
       } catch (err) {
         console.error(`Model ${model} error:`, err);
         continue;
       }
     }
 
-    return { content: "", model: "", error: "All models unavailable. Check your API key." };
+    return { content: "", model: "", finishReason: null, error: "All models unavailable. Check your API key." };
   });
