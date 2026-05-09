@@ -13,6 +13,8 @@ export interface DiffEntry {
 const CHAT_KEY = "code-editor-chat";
 const DIFF_KEY = "code-editor-diffs";
 const API_KEY_KEY = "code-editor-api-key";
+const MODEL_KEY = "code-editor-model";
+const DEFAULT_MODEL = "baidu/cobuddy:free";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
@@ -42,6 +44,7 @@ export function useEditorStore() {
     }
   });
   const [apiKey, setApiKeyState] = useState(() => (typeof window === "undefined" ? "" : localStorage.getItem(API_KEY_KEY) || ""));
+  const [model, setModelState] = useState(() => (typeof window === "undefined" ? DEFAULT_MODEL : localStorage.getItem(MODEL_KEY) || DEFAULT_MODEL));
 
   const filesRef = useRef(files);
   filesRef.current = files;
@@ -133,6 +136,11 @@ export function useEditorStore() {
     localStorage.setItem(API_KEY_KEY, key);
   }, []);
 
+  const setModel = useCallback((m: string) => {
+    setModelState(m);
+    try { localStorage.setItem(MODEL_KEY, m); } catch {}
+  }, []);
+
   const addDiff = useCallback((path: string, before: string, after: string) => {
     const entry: DiffEntry = {
       id: crypto.randomUUID(),
@@ -169,6 +177,8 @@ export function useEditorStore() {
     diffs,
     apiKey,
     setApiKey,
+    model,
+    setModel,
     setFiles,
     updateFile,
     openFile,

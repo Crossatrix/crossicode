@@ -1,52 +1,42 @@
+## Goals
 
-# AI Code Editor
+Fix three issues with the AI chat:
+1. Large file edits get truncated by the response token limit.
+2. Some models emit `<longcat_tool_call>...</longcat_tool_call>` instead of `[/( ... )]`, so tool calls aren't executed.
+3. No way to choose which model is used.
 
-A browser-based code editing environment where you upload a zip of your project, browse and edit files, and chat with an AI that can read and modify your code. Everything is stored in localStorage — no login required.
+## Changes
 
-## Layout
+### 1. Remove the message length limit for large edits
+**`src/lib/ai-chat.functions.ts`**
+- Raise `max_tokens` from 4096 to 32000 (or omit it so the provider default applies).
+- Accept an optional `model` field in the input schema; if present, use it instead of the hardcoded fallback list.
 
-Split-view with three panels:
-1. **File tree sidebar** (left) — collapsible, shows all files from the uploaded zip
-2. **Code editor** (center) — tabbed editor with syntax highlighting, shows the currently selected file
-3. **AI chat panel** (right) — conversation with the AI assistant, collapsible
+**`src/components/ChatPanel.tsx` — continuation loop**
+- After each assistant reply, detect a *truncated* tool call: the response contains `[/( edit ...` or `[/( create ...` with no matching `)]` closing it.
+- When detected, automatically send a follow-up turn with a short user message like "continue the previous tool call from exactly where you stopped, do not repeat anything, end with `)]`" and append the new chunk to the previous assistant message before parsing.
+- Loop until the call closes or a max-continuation count (e.g. 5) is hit. This lets the AI emit very large file contents across multiple turns transparently.
 
-Dark theme throughout, VS Code-inspired aesthetic.
+### 2. Recognize alternative tool-call syntaxes
+**`src/components/ChatPanel.tsx`**
+- Extend `parseToolCalls` and `stripToolCalls` to also match:
+  - `<longcat_tool_call>NAME args...</longcat_tool_call>` (and similar `<tool_call>` variants), parsing the inner text as `tool args`.
+- Strengthen the system prompt to insist on `[/( ... )]`, but fall back gracefully when the model ignores it.
 
-## Features
+### 3. Model selector in Settings
+**`src/hooks/use-editor-store.ts`**
+- Add `model` state persisted to `localStorage` (`code-editor-model`), default `"baidu/cobuddy:free"`. Expose `model` and `setModel`.
 
-### Zip Upload
-- Upload a .zip file via a drop zone or button on the home screen
-- Extracts all files into an in-memory file system stored in localStorage
-- File tree updates to show the project structure (folders and files)
-- Can re-upload or clear the project at any time
+**`src/components/ChatPanel.tsx`**
+- Add a model `<select>` (with a few preset OpenRouter options) plus a free-text input for custom model IDs in the Settings panel.
+- Pass the chosen model to `chatWithAI({ data: { ..., model } })`.
 
-### Code Editor
-- Syntax-highlighted editor using CodeMirror
-- Tabbed interface for multiple open files
-- Edit and save files (persisted to localStorage)
-- File tree click opens file in a new tab
+**`src/routes/index.tsx`**
+- Wire `store.model` / `store.setModel` into `<ChatPanel />` props.
 
-### AI Chat
-- Chat panel beside the editor with message history (stored in localStorage)
-- Sends messages to OpenRouter API (model: `baidu/cobuddy:free`, fallback: `openrouter/owl-alpha`)
-- User provides their OpenRouter API key via a settings input (stored in localStorage)
-- On project load, AI receives a system prompt with the full file tree (paths and filenames)
+## Technical notes
 
-### AI Tool Use
-- The AI can use tools in its responses using the format `[/( <tool> )\]`
-- **read \<path\>** — AI requests to read a file; the app automatically sends the file content back to the AI
-- **edit \<path\> \<new file content\>** — AI proposes a file edit
-- When AI edits a file: changes auto-apply with a toast notification, and a diff history is kept so you can view what changed and undo edits
-
-### Diff History
-- Each AI edit creates a history entry showing before/after
-- View diff in a modal with accept (already applied) or revert option
-- Undo reverts the file to its previous state
-
-## Technical Details
-
-- **CodeMirror 6** for the editor (syntax highlighting for common languages)
-- **JSZip** for zip extraction in the browser
-- **OpenRouter API** called via a server function (to keep the API key secure) with fallback model logic
-- **localStorage** for all persistence: files, chat history, open tabs, API key
-- **react-diff-viewer** or similar for diff display
+- Truncation detector: count unclosed `[/(` occurrences vs `)]` occurrences; if positive, treat as truncated.
+- Continuation merging: when the AI responds again, concatenate its `content` to the prior assistant message in `conversationHistory` so `parseToolCalls` sees the full call, then process tools as today.
+- Model preset list (initial): `baidu/cobuddy:free`, `openrouter/owl-alpha`, `google/gemini-2.0-flash-exp:free`, `meta-llama/llama-3.3-70b-instruct:free`. User can type any other ID.
+- No backend/database changes; everything stays client-side + the existing server function.

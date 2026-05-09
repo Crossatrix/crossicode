@@ -221,6 +221,8 @@ function Index() {
               filesRef={store.filesRef}
               apiKey={store.apiKey}
               setApiKey={store.setApiKey}
+              model={store.model}
+              setModel={store.setModel}
               onFileRead={handleFileRead}
               onFileEdit={handleFileEdit}
               onFileCreate={store.createFile}

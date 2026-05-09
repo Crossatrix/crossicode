@@ -12,6 +12,8 @@ interface ChatPanelProps {
   filesRef: React.MutableRefObject<Record<string, string>>;
   apiKey: string;
   setApiKey: (key: string) => void;
+  model: string;
+  setModel: (m: string) => void;
   onFileRead: (path: string) => string | undefined;
   onFileEdit: (path: string, content: string) => void;
   onFileCreate: (path: string, content?: string) => void;
@@ -20,18 +22,43 @@ interface ChatPanelProps {
   onRevertDiff: (id: string) => void;
 }
 
+const MODEL_PRESETS = [
+  "baidu/cobuddy:free",
+  "openrouter/owl-alpha",
+  "google/gemini-2.0-flash-exp:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "deepseek/deepseek-chat-v3.1:free",
+  "qwen/qwen3-coder:free",
+];
+
+const TOOL_NAMES = "read|edit|create|delete|search";
+const BRACKET_RE = new RegExp(`\\[\\/\\(\\s*(${TOOL_NAMES})\\s+([\\s\\S]*?)\\s*\\)\\]`, "g");
+const XML_RE = new RegExp(`<(?:longcat_)?tool_call>\\s*(${TOOL_NAMES})\\s+([\\s\\S]*?)\\s*<\\/(?:longcat_)?tool_call>`, "g");
+
 function parseToolCalls(content: string): Array<{ tool: string; args: string }> {
-  const regex = /\[\/\(\s*(read|edit|create|delete|search)\s+([\s\S]*?)\s*\)\]/g;
   const calls: Array<{ tool: string; args: string }> = [];
-  let match;
-  while ((match = regex.exec(content)) !== null) {
-    calls.push({ tool: match[1], args: match[2] });
-  }
+  let m;
+  const b = new RegExp(BRACKET_RE.source, "g");
+  while ((m = b.exec(content)) !== null) calls.push({ tool: m[1], args: m[2] });
+  const x = new RegExp(XML_RE.source, "g");
+  while ((m = x.exec(content)) !== null) calls.push({ tool: m[1], args: m[2] });
   return calls;
 }
 
 function stripToolCalls(content: string): string {
-  return content.replace(/\[\/\(\s*(read|edit|create|delete|search)\s+[\s\S]*?\s*\)\]/g, "").trim();
+  return content
+    .replace(new RegExp(BRACKET_RE.source, "g"), "")
+    .replace(new RegExp(XML_RE.source, "g"), "")
+    .trim();
+}
+
+function hasUnclosedToolCall(content: string): boolean {
+  const stripped = content
+    .replace(new RegExp(BRACKET_RE.source, "g"), "")
+    .replace(new RegExp(XML_RE.source, "g"), "");
+  if (/\[\/\(\s*(?:read|edit|create|delete|search)\b/.test(stripped)) return true;
+  if (/<(?:longcat_)?tool_call>\s*(?:read|edit|create|delete|search)\b/.test(stripped)) return true;
+  return false;
 }
 
 function getToolSummary(tool: string, args: string): string {
@@ -77,6 +104,8 @@ export function ChatPanel({
   filesRef,
   apiKey,
   setApiKey,
+  model,
+  setModel,
   onFileRead,
   onFileEdit,
   onFileCreate,
@@ -217,7 +246,7 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
 
       for (let loop = 0; loop < MAX_TOOL_LOOPS; loop++) {
         const apiMessages = [systemMsg, ...conversationHistory];
-        const result = await chatWithAI({ data: { messages: apiMessages, apiKey } });
+        let result = await chatWithAI({ data: { messages: apiMessages, apiKey, model } });
 
         if (result.error) {
           setMessages((prev) => [
@@ -227,11 +256,34 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
           return;
         }
 
-        const assistantMsg: ChatMessage = { role: "assistant", content: result.content };
+        let assistantContent = result.content;
+
+        // Auto-continue if response was truncated mid tool-call
+        const MAX_CONT = 5;
+        for (let c = 0; c < MAX_CONT; c++) {
+          const truncated =
+            result.finishReason === "length" || hasUnclosedToolCall(assistantContent);
+          if (!truncated) break;
+          const contMessages: ChatMessage[] = [
+            systemMsg,
+            ...conversationHistory,
+            { role: "assistant", content: assistantContent },
+            {
+              role: "user",
+              content:
+                "Your previous message was cut off. Continue from EXACTLY where you stopped — do not repeat any text, do not add explanations, just output the remaining characters and make sure to close the tool call with )] (or </longcat_tool_call>).",
+            },
+          ];
+          result = await chatWithAI({ data: { messages: contMessages, apiKey, model } });
+          if (result.error || !result.content) break;
+          assistantContent += result.content;
+        }
+
+        const assistantMsg: ChatMessage = { role: "assistant", content: assistantContent };
         conversationHistory = [...conversationHistory, assistantMsg];
         setMessages([...conversationHistory]);
 
-        const toolResult = await processToolCalls(result.content);
+        const toolResult = await processToolCalls(assistantContent);
         if (!toolResult) break;
 
         const toolMsg: ChatMessage = { role: "user", content: `Tool results:\n${toolResult}` };
@@ -246,7 +298,7 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
     } finally {
       setLoading(false);
     }
-  }, [input, apiKey, messages, setMessages, getSystemPrompt, processToolCalls]);
+  }, [input, apiKey, model, messages, setMessages, getSystemPrompt, processToolCalls]);
 
   return (
     <div className="flex flex-col h-full bg-[#181825] text-foreground">
@@ -291,8 +343,28 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
             placeholder="sk-or-..."
             className="w-full text-xs bg-[#1e1e2e] border border-[#313244] rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500"
           />
+          <label className="text-xs text-muted-foreground block mt-2 mb-1">Model</label>
+          <select
+            value={MODEL_PRESETS.includes(model) ? model : "__custom__"}
+            onChange={(e) => {
+              if (e.target.value !== "__custom__") setModel(e.target.value);
+            }}
+            className="w-full text-xs bg-[#1e1e2e] border border-[#313244] rounded px-2 py-1.5 text-foreground focus:outline-none focus:border-blue-500"
+          >
+            {MODEL_PRESETS.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+            <option value="__custom__">Custom…</option>
+          </select>
+          <input
+            type="text"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="provider/model-id"
+            className="w-full mt-1 text-xs bg-[#1e1e2e] border border-[#313244] rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500 font-mono"
+          />
           <p className="text-[10px] text-muted-foreground mt-1">
-            Models: baidu/cobuddy:free → openrouter/owl-alpha (fallback)
+            If the chosen model fails, falls back to baidu/cobuddy:free → openrouter/owl-alpha.
           </p>
         </div>
       )}
