@@ -343,8 +343,28 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
             placeholder="sk-or-..."
             className="w-full text-xs bg-[#1e1e2e] border border-[#313244] rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500"
           />
+          <label className="text-xs text-muted-foreground block mt-2 mb-1">Model</label>
+          <select
+            value={MODEL_PRESETS.includes(model) ? model : "__custom__"}
+            onChange={(e) => {
+              if (e.target.value !== "__custom__") setModel(e.target.value);
+            }}
+            className="w-full text-xs bg-[#1e1e2e] border border-[#313244] rounded px-2 py-1.5 text-foreground focus:outline-none focus:border-blue-500"
+          >
+            {MODEL_PRESETS.map((m) => (
+              <option key={m} value={m}>{m}</option>
+            ))}
+            <option value="__custom__">Custom…</option>
+          </select>
+          <input
+            type="text"
+            value={model}
+            onChange={(e) => setModel(e.target.value)}
+            placeholder="provider/model-id"
+            className="w-full mt-1 text-xs bg-[#1e1e2e] border border-[#313244] rounded px-2 py-1.5 text-foreground placeholder:text-muted-foreground focus:outline-none focus:border-blue-500 font-mono"
+          />
           <p className="text-[10px] text-muted-foreground mt-1">
-            Models: baidu/cobuddy:free → openrouter/owl-alpha (fallback)
+            If the chosen model fails, falls back to baidu/cobuddy:free → openrouter/owl-alpha.
           </p>
         </div>
       )}
