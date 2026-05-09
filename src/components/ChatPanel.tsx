@@ -31,18 +31,34 @@ const MODEL_PRESETS = [
   "qwen/qwen3-coder:free",
 ];
 
+const TOOL_NAMES = "read|edit|create|delete|search";
+const BRACKET_RE = new RegExp(`\\[\\/\\(\\s*(${TOOL_NAMES})\\s+([\\s\\S]*?)\\s*\\)\\]`, "g");
+const XML_RE = new RegExp(`<(?:longcat_)?tool_call>\\s*(${TOOL_NAMES})\\s+([\\s\\S]*?)\\s*<\\/(?:longcat_)?tool_call>`, "g");
+
 function parseToolCalls(content: string): Array<{ tool: string; args: string }> {
-  const regex = /\[\/\(\s*(read|edit|create|delete|search)\s+([\s\S]*?)\s*\)\]/g;
   const calls: Array<{ tool: string; args: string }> = [];
-  let match;
-  while ((match = regex.exec(content)) !== null) {
-    calls.push({ tool: match[1], args: match[2] });
-  }
+  let m;
+  const b = new RegExp(BRACKET_RE.source, "g");
+  while ((m = b.exec(content)) !== null) calls.push({ tool: m[1], args: m[2] });
+  const x = new RegExp(XML_RE.source, "g");
+  while ((m = x.exec(content)) !== null) calls.push({ tool: m[1], args: m[2] });
   return calls;
 }
 
 function stripToolCalls(content: string): string {
-  return content.replace(/\[\/\(\s*(read|edit|create|delete|search)\s+[\s\S]*?\s*\)\]/g, "").trim();
+  return content
+    .replace(new RegExp(BRACKET_RE.source, "g"), "")
+    .replace(new RegExp(XML_RE.source, "g"), "")
+    .trim();
+}
+
+function hasUnclosedToolCall(content: string): boolean {
+  const stripped = content
+    .replace(new RegExp(BRACKET_RE.source, "g"), "")
+    .replace(new RegExp(XML_RE.source, "g"), "");
+  if (/\[\/\(\s*(?:read|edit|create|delete|search)\b/.test(stripped)) return true;
+  if (/<(?:longcat_)?tool_call>\s*(?:read|edit|create|delete|search)\b/.test(stripped)) return true;
+  return false;
 }
 
 function getToolSummary(tool: string, args: string): string {
