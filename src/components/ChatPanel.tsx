@@ -12,6 +12,8 @@ interface ChatPanelProps {
   filesRef: React.MutableRefObject<Record<string, string>>;
   apiKey: string;
   setApiKey: (key: string) => void;
+  model: string;
+  setModel: (m: string) => void;
   onFileRead: (path: string) => string | undefined;
   onFileEdit: (path: string, content: string) => void;
   onFileCreate: (path: string, content?: string) => void;
@@ -19,6 +21,15 @@ interface ChatPanelProps {
   diffs: DiffEntry[];
   onRevertDiff: (id: string) => void;
 }
+
+const MODEL_PRESETS = [
+  "baidu/cobuddy:free",
+  "openrouter/owl-alpha",
+  "google/gemini-2.0-flash-exp:free",
+  "meta-llama/llama-3.3-70b-instruct:free",
+  "deepseek/deepseek-chat-v3.1:free",
+  "qwen/qwen3-coder:free",
+];
 
 function parseToolCalls(content: string): Array<{ tool: string; args: string }> {
   const regex = /\[\/\(\s*(read|edit|create|delete|search)\s+([\s\S]*?)\s*\)\]/g;
