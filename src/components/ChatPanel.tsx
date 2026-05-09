@@ -298,7 +298,7 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
     } finally {
       setLoading(false);
     }
-  }, [input, apiKey, messages, setMessages, getSystemPrompt, processToolCalls]);
+  }, [input, apiKey, model, messages, setMessages, getSystemPrompt, processToolCalls]);
 
   return (
     <div className="flex flex-col h-full bg-[#181825] text-foreground">
