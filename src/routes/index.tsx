@@ -130,6 +130,15 @@ function Index() {
           <span className="text-sm font-medium">AI Code Editor</span>
         </div>
         <div className="flex items-center gap-1">
+          {!isInstalled && (
+            <button
+              onClick={handleInstall}
+              className="p-1.5 hover:bg-accent/50 rounded"
+              title="Install as app (PWA)"
+            >
+              <Smartphone className="h-4 w-4 text-blue-400" />
+            </button>
+          )}
           <label className="p-1.5 hover:bg-accent/50 rounded cursor-pointer" title="Upload new zip">
             <Upload className="h-4 w-4 text-muted-foreground" />
             <input
