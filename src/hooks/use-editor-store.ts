@@ -177,6 +177,8 @@ export function useEditorStore() {
     diffs,
     apiKey,
     setApiKey,
+    model,
+    setModel,
     setFiles,
     updateFile,
     openFile,
