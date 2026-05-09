@@ -104,6 +104,8 @@ export function ChatPanel({
   filesRef,
   apiKey,
   setApiKey,
+  model,
+  setModel,
   onFileRead,
   onFileEdit,
   onFileCreate,
