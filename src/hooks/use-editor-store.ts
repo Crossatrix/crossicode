@@ -136,6 +136,11 @@ export function useEditorStore() {
     localStorage.setItem(API_KEY_KEY, key);
   }, []);
 
+  const setModel = useCallback((m: string) => {
+    setModelState(m);
+    try { localStorage.setItem(MODEL_KEY, m); } catch {}
+  }, []);
+
   const addDiff = useCallback((path: string, before: string, after: string) => {
     const entry: DiffEntry = {
       id: crypto.randomUUID(),
