@@ -13,6 +13,8 @@ export interface DiffEntry {
 const CHAT_KEY = "code-editor-chat";
 const DIFF_KEY = "code-editor-diffs";
 const API_KEY_KEY = "code-editor-api-key";
+const MODEL_KEY = "code-editor-model";
+const DEFAULT_MODEL = "baidu/cobuddy:free";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
