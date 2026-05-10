@@ -515,8 +515,36 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
       </div>
 
       {/* Input */}
-      <div className="px-3 py-2 border-t border-[#313244]">
+      <div className="px-3 py-2 border-t border-[#313244] space-y-2">
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {attachments.map((a, i) => (
+              <div key={i} className="flex items-center gap-1 bg-[#1e1e2e] border border-[#313244] rounded px-2 py-1 text-[10px] text-foreground max-w-full">
+                <Paperclip className="h-3 w-3 text-blue-400 shrink-0" />
+                <span className="truncate max-w-[140px]" title={`${a.name} (${a.mime}, ${a.size}B)`}>{a.name}</span>
+                <button onClick={() => removeAttachment(i)} className="hover:text-red-400 shrink-0">
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => handleFiles(e.target.files)}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!apiKey || loading}
+            title="Attach files (any format)"
+            className="self-end p-2 bg-[#1e1e2e] hover:bg-[#313244] border border-[#313244] disabled:opacity-50 rounded-lg transition-colors"
+          >
+            <Paperclip className="h-4 w-4 text-muted-foreground" />
+          </button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -533,7 +561,7 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
           />
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || !apiKey || loading}
+            disabled={(!input.trim() && attachments.length === 0) || !apiKey || loading}
             className="self-end p-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 rounded-lg transition-colors"
           >
             <Send className="h-4 w-4 text-white" />
