@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useCallback, useEffect } from "react";
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2, Download, Files, Search, Smartphone } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2, Download, Files, Search, Smartphone, Cloud, LogIn, LogOut } from "lucide-react";
 import { useEditorStore } from "../hooks/use-editor-store";
 import { getFileTree } from "../lib/file-system";
 import { FileTree } from "../components/FileTree";
@@ -8,6 +8,10 @@ import { CodeEditor } from "../components/CodeEditor";
 import { ChatPanel } from "../components/ChatPanel";
 import { ZipUploader } from "../components/ZipUploader";
 import { SearchPanel } from "../components/SearchPanel";
+import { AuthDialog } from "../components/AuthDialog";
+import { CloudProjectsDialog } from "../components/CloudProjectsDialog";
+import { useAuth } from "../lib/use-auth";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/")({
   component: Index,
