@@ -28,7 +28,7 @@ export const chatWithAI = createServerFn({ method: "POST" })
           body: JSON.stringify({
             model,
             messages: data.messages,
-            max_tokens: 32000,
+            max_tokens: 50000,
           }),
         });
 
