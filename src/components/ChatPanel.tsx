@@ -125,6 +125,52 @@ export function ChatPanel({
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
 
+  const isTextMime = (mime: string, name: string) => {
+    if (mime.startsWith("text/")) return true;
+    if (/json|xml|yaml|javascript|typescript|sql|csv|html|css|svg|toml|markdown/i.test(mime)) return true;
+    if (/\.(txt|md|json|xml|yml|yaml|js|jsx|ts|tsx|py|rb|go|rs|java|c|h|cpp|hpp|cs|php|sh|bash|zsh|sql|css|scss|less|html|htm|svg|toml|ini|env|csv|tsv|log|gitignore|prettierrc|eslintrc|lock)$/i.test(name)) return true;
+    return false;
+  };
+
+  const handleFiles = useCallback(async (files: FileList | null) => {
+    if (!files) return;
+    const next: typeof attachments = [];
+    for (const f of Array.from(files)) {
+      if (f.size > 10 * 1024 * 1024) {
+        next.push({ name: f.name, mime: f.type || "application/octet-stream", size: f.size, kind: "text", content: `[file too large: ${f.size} bytes — skipped]` });
+        continue;
+      }
+      const mime = f.type || "application/octet-stream";
+      if (isTextMime(mime, f.name)) {
+        const text = await f.text();
+        next.push({ name: f.name, mime, size: f.size, kind: "text", content: text });
+      } else {
+        const buf = await f.arrayBuffer();
+        let bin = "";
+        const bytes = new Uint8Array(buf);
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        const b64 = btoa(bin);
+        next.push({ name: f.name, mime, size: f.size, kind: "binary", content: b64 });
+      }
+    }
+    setAttachments((prev) => [...prev, ...next]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  const removeAttachment = (i: number) => setAttachments((prev) => prev.filter((_, idx) => idx !== i));
+
+  const buildMessageContent = (text: string) => {
+    if (attachments.length === 0) return text;
+    const parts = attachments.map((a) => {
+      if (a.kind === "text") {
+        return `--- Attached file: ${a.name} (${a.mime}, ${a.size} bytes) ---\n\`\`\`\n${a.content}\n\`\`\``;
+      }
+      const preview = a.content.length > 200 ? a.content.slice(0, 200) + "..." : a.content;
+      return `--- Attached binary file: ${a.name} (${a.mime}, ${a.size} bytes, base64) ---\n${preview}\n[base64 truncated, full length ${a.content.length} chars]`;
+    });
+    return [text, ...parts].filter(Boolean).join("\n\n");
+  };
+
   const getSystemPrompt = useCallback(() => {
     const paths = getFilePaths(filesRef.current);
     return `You are an AI code assistant. The user has uploaded a project with the following files:
