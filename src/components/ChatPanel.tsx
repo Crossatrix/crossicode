@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Settings, Trash2, Bot, User, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Send, Settings, Trash2, Bot, User, Loader2, ChevronDown, ChevronRight, Paperclip, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { chatWithAI } from "../lib/ai-chat.functions";
 import { getFilePaths } from "../lib/file-system";
@@ -117,11 +117,59 @@ export function ChatPanel({
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showDiffs, setShowDiffs] = useState(false);
+  const [attachments, setAttachments] = useState<Array<{ name: string; mime: string; size: number; kind: "text" | "binary"; content: string }>>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
+
+  const isTextMime = (mime: string, name: string) => {
+    if (mime.startsWith("text/")) return true;
+    if (/json|xml|yaml|javascript|typescript|sql|csv|html|css|svg|toml|markdown/i.test(mime)) return true;
+    if (/\.(txt|md|json|xml|yml|yaml|js|jsx|ts|tsx|py|rb|go|rs|java|c|h|cpp|hpp|cs|php|sh|bash|zsh|sql|css|scss|less|html|htm|svg|toml|ini|env|csv|tsv|log|gitignore|prettierrc|eslintrc|lock)$/i.test(name)) return true;
+    return false;
+  };
+
+  const handleFiles = useCallback(async (files: FileList | null) => {
+    if (!files) return;
+    const next: typeof attachments = [];
+    for (const f of Array.from(files)) {
+      if (f.size > 10 * 1024 * 1024) {
+        next.push({ name: f.name, mime: f.type || "application/octet-stream", size: f.size, kind: "text", content: `[file too large: ${f.size} bytes — skipped]` });
+        continue;
+      }
+      const mime = f.type || "application/octet-stream";
+      if (isTextMime(mime, f.name)) {
+        const text = await f.text();
+        next.push({ name: f.name, mime, size: f.size, kind: "text", content: text });
+      } else {
+        const buf = await f.arrayBuffer();
+        let bin = "";
+        const bytes = new Uint8Array(buf);
+        for (let i = 0; i < bytes.length; i++) bin += String.fromCharCode(bytes[i]);
+        const b64 = btoa(bin);
+        next.push({ name: f.name, mime, size: f.size, kind: "binary", content: b64 });
+      }
+    }
+    setAttachments((prev) => [...prev, ...next]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
+  const removeAttachment = (i: number) => setAttachments((prev) => prev.filter((_, idx) => idx !== i));
+
+  const buildMessageContent = (text: string) => {
+    if (attachments.length === 0) return text;
+    const parts = attachments.map((a) => {
+      if (a.kind === "text") {
+        return `--- Attached file: ${a.name} (${a.mime}, ${a.size} bytes) ---\n\`\`\`\n${a.content}\n\`\`\``;
+      }
+      const preview = a.content.length > 200 ? a.content.slice(0, 200) + "..." : a.content;
+      return `--- Attached binary file: ${a.name} (${a.mime}, ${a.size} bytes, base64) ---\n${preview}\n[base64 truncated, full length ${a.content.length} chars]`;
+    });
+    return [text, ...parts].filter(Boolean).join("\n\n");
+  };
 
   const getSystemPrompt = useCallback(() => {
     const paths = getFilePaths(filesRef.current);
@@ -231,12 +279,14 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
   );
 
   const sendMessage = useCallback(async () => {
-    if (!input.trim() || !apiKey.trim()) return;
+    if ((!input.trim() && attachments.length === 0) || !apiKey.trim()) return;
 
-    const userMsg: ChatMessage = { role: "user", content: input.trim() };
+    const composed = buildMessageContent(input.trim());
+    const userMsg: ChatMessage = { role: "user", content: composed };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput("");
+    setAttachments([]);
     setLoading(true);
 
     try {
@@ -298,7 +348,7 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
     } finally {
       setLoading(false);
     }
-  }, [input, apiKey, model, messages, setMessages, getSystemPrompt, processToolCalls]);
+  }, [input, attachments, apiKey, model, messages, setMessages, getSystemPrompt, processToolCalls]);
 
   return (
     <div className="flex flex-col h-full bg-[#181825] text-foreground">
@@ -465,8 +515,36 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
       </div>
 
       {/* Input */}
-      <div className="px-3 py-2 border-t border-[#313244]">
+      <div className="px-3 py-2 border-t border-[#313244] space-y-2">
+        {attachments.length > 0 && (
+          <div className="flex flex-wrap gap-1">
+            {attachments.map((a, i) => (
+              <div key={i} className="flex items-center gap-1 bg-[#1e1e2e] border border-[#313244] rounded px-2 py-1 text-[10px] text-foreground max-w-full">
+                <Paperclip className="h-3 w-3 text-blue-400 shrink-0" />
+                <span className="truncate max-w-[140px]" title={`${a.name} (${a.mime}, ${a.size}B)`}>{a.name}</span>
+                <button onClick={() => removeAttachment(i)} className="hover:text-red-400 shrink-0">
+                  <X className="h-3 w-3" />
+                </button>
+              </div>
+            ))}
+          </div>
+        )}
         <div className="flex gap-2">
+          <input
+            ref={fileInputRef}
+            type="file"
+            multiple
+            className="hidden"
+            onChange={(e) => handleFiles(e.target.files)}
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={!apiKey || loading}
+            title="Attach files (any format)"
+            className="self-end p-2 bg-[#1e1e2e] hover:bg-[#313244] border border-[#313244] disabled:opacity-50 rounded-lg transition-colors"
+          >
+            <Paperclip className="h-4 w-4 text-muted-foreground" />
+          </button>
           <textarea
             value={input}
             onChange={(e) => setInput(e.target.value)}
@@ -483,7 +561,7 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
           />
           <button
             onClick={sendMessage}
-            disabled={!input.trim() || !apiKey || loading}
+            disabled={(!input.trim() && attachments.length === 0) || !apiKey || loading}
             className="self-end p-2 bg-blue-600 hover:bg-blue-500 disabled:opacity-50 disabled:hover:bg-blue-600 rounded-lg transition-colors"
           >
             <Send className="h-4 w-4 text-white" />
