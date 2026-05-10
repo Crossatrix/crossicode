@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useCallback, useEffect } from "react";
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2, Download, Files, Search, Smartphone } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2, Download, Files, Search, Smartphone, Cloud, LogIn, LogOut } from "lucide-react";
 import { useEditorStore } from "../hooks/use-editor-store";
 import { getFileTree } from "../lib/file-system";
 import { FileTree } from "../components/FileTree";
@@ -8,6 +8,10 @@ import { CodeEditor } from "../components/CodeEditor";
 import { ChatPanel } from "../components/ChatPanel";
 import { ZipUploader } from "../components/ZipUploader";
 import { SearchPanel } from "../components/SearchPanel";
+import { AuthDialog } from "../components/AuthDialog";
+import { CloudProjectsDialog } from "../components/CloudProjectsDialog";
+import { useAuth } from "../lib/use-auth";
+import { supabase } from "@/integrations/supabase/client";
 
 export const Route = createFileRoute("/")({
   component: Index,
@@ -26,6 +30,9 @@ function Index() {
   const [chatOpen, setChatOpen] = useState(true);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [cloudOpen, setCloudOpen] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     const onPrompt = (e: Event) => {
@@ -105,7 +112,32 @@ function Index() {
             </p>
           </div>
           <ZipUploader onFilesLoaded={store.importFiles} />
+          <div className="text-center">
+            {user ? (
+              <button
+                onClick={() => setCloudOpen(true)}
+                className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1"
+              >
+                <Cloud className="h-3 w-3" /> Load from cloud
+              </button>
+            ) : (
+              <button
+                onClick={() => setAuthOpen(true)}
+                className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1"
+              >
+                <LogIn className="h-3 w-3" /> Sign in to sync projects (optional)
+              </button>
+            )}
+          </div>
         </div>
+        {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} />}
+        {cloudOpen && user && (
+          <CloudProjectsDialog
+            files={store.files}
+            onClose={() => setCloudOpen(false)}
+            onLoad={store.importFiles}
+          />
+        )}
       </div>
     );
   }
@@ -130,6 +162,32 @@ function Index() {
           <span className="text-sm font-medium">AI Code Editor</span>
         </div>
         <div className="flex items-center gap-1">
+          {user ? (
+            <>
+              <button
+                onClick={() => setCloudOpen(true)}
+                className="p-1.5 hover:bg-accent/50 rounded"
+                title="Cloud projects"
+              >
+                <Cloud className="h-4 w-4 text-blue-400" />
+              </button>
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="p-1.5 hover:bg-accent/50 rounded"
+                title={`Sign out (${user.email})`}
+              >
+                <LogOut className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setAuthOpen(true)}
+              className="p-1.5 hover:bg-accent/50 rounded"
+              title="Sign in (optional)"
+            >
+              <LogIn className="h-4 w-4 text-muted-foreground" />
+            </button>
+          )}
           {!isInstalled && (
             <button
               onClick={handleInstall}
@@ -274,6 +332,14 @@ function Index() {
           </div>
         )}
       </div>
+      {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} />}
+      {cloudOpen && user && (
+        <CloudProjectsDialog
+          files={store.files}
+          onClose={() => setCloudOpen(false)}
+          onLoad={store.importFiles}
+        />
+      )}
     </div>
   );
 }
