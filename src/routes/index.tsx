@@ -330,6 +330,7 @@ function Index() {
               onRevertDiff={store.revertDiff}
             />
           </div>
+        )}
       </div>
       {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} />}
       {cloudOpen && user && (
