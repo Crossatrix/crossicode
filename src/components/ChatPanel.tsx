@@ -117,6 +117,8 @@ export function ChatPanel({
   const [loading, setLoading] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showDiffs, setShowDiffs] = useState(false);
+  const [attachments, setAttachments] = useState<Array<{ name: string; mime: string; size: number; kind: "text" | "binary"; content: string }>>([]);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
