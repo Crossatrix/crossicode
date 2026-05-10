@@ -162,6 +162,32 @@ function Index() {
           <span className="text-sm font-medium">AI Code Editor</span>
         </div>
         <div className="flex items-center gap-1">
+          {user ? (
+            <>
+              <button
+                onClick={() => setCloudOpen(true)}
+                className="p-1.5 hover:bg-accent/50 rounded"
+                title="Cloud projects"
+              >
+                <Cloud className="h-4 w-4 text-blue-400" />
+              </button>
+              <button
+                onClick={() => supabase.auth.signOut()}
+                className="p-1.5 hover:bg-accent/50 rounded"
+                title={`Sign out (${user.email})`}
+              >
+                <LogOut className="h-4 w-4 text-muted-foreground" />
+              </button>
+            </>
+          ) : (
+            <button
+              onClick={() => setAuthOpen(true)}
+              className="p-1.5 hover:bg-accent/50 rounded"
+              title="Sign in (optional)"
+            >
+              <LogIn className="h-4 w-4 text-muted-foreground" />
+            </button>
+          )}
           {!isInstalled && (
             <button
               onClick={handleInstall}
