@@ -30,6 +30,9 @@ function Index() {
   const [chatOpen, setChatOpen] = useState(true);
   const [installPrompt, setInstallPrompt] = useState<any>(null);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [authOpen, setAuthOpen] = useState(false);
+  const [cloudOpen, setCloudOpen] = useState(false);
+  const { user } = useAuth();
 
   useEffect(() => {
     const onPrompt = (e: Event) => {
