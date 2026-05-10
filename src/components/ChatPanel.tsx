@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { Send, Settings, Trash2, Bot, User, Loader2, ChevronDown, ChevronRight } from "lucide-react";
+import { Send, Settings, Trash2, Bot, User, Loader2, ChevronDown, ChevronRight, Paperclip, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import { chatWithAI } from "../lib/ai-chat.functions";
 import { getFilePaths } from "../lib/file-system";
