@@ -330,8 +330,15 @@ function Index() {
               onRevertDiff={store.revertDiff}
             />
           </div>
-        )}
       </div>
+      {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} />}
+      {cloudOpen && user && (
+        <CloudProjectsDialog
+          files={store.files}
+          onClose={() => setCloudOpen(false)}
+          onLoad={store.importFiles}
+        />
+      )}
     </div>
   );
 }
