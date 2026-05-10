@@ -279,12 +279,14 @@ Keep your responses brief. Explain in 1-2 sentences what you'll do, then use the
   );
 
   const sendMessage = useCallback(async () => {
-    if (!input.trim() || !apiKey.trim()) return;
+    if ((!input.trim() && attachments.length === 0) || !apiKey.trim()) return;
 
-    const userMsg: ChatMessage = { role: "user", content: input.trim() };
+    const composed = buildMessageContent(input.trim());
+    const userMsg: ChatMessage = { role: "user", content: composed };
     const newMessages = [...messages, userMsg];
     setMessages(newMessages);
     setInput("");
+    setAttachments([]);
     setLoading(true);
 
     try {
