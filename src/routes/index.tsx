@@ -112,7 +112,32 @@ function Index() {
             </p>
           </div>
           <ZipUploader onFilesLoaded={store.importFiles} />
+          <div className="text-center">
+            {user ? (
+              <button
+                onClick={() => setCloudOpen(true)}
+                className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1"
+              >
+                <Cloud className="h-3 w-3" /> Load from cloud
+              </button>
+            ) : (
+              <button
+                onClick={() => setAuthOpen(true)}
+                className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1"
+              >
+                <LogIn className="h-3 w-3" /> Sign in to sync projects (optional)
+              </button>
+            )}
+          </div>
         </div>
+        {authOpen && <AuthDialog onClose={() => setAuthOpen(false)} />}
+        {cloudOpen && user && (
+          <CloudProjectsDialog
+            files={store.files}
+            onClose={() => setCloudOpen(false)}
+            onLoad={store.importFiles}
+          />
+        )}
       </div>
     );
   }
