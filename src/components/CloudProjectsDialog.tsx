@@ -34,6 +34,14 @@ export function CloudProjectsDialog({
     refresh();
   }, [refresh]);
 
+  const sanitize = (f: Record<string, string>) => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(f)) {
+      out[k] = typeof v === "string" ? v.replace(/\u0000/g, "") : String(v ?? "");
+    }
+    return out;
+  };
+
   const save = async () => {
     setBusy(true);
     setMsg(null);
@@ -43,7 +51,7 @@ export function CloudProjectsDialog({
       const { error } = await supabase.from("projects").insert({
         user_id: u.user.id,
         name: name || "Untitled",
-        files: files as any,
+        files: sanitize(files) as any,
       });
       if (error) throw error;
       setMsg("Saved to cloud.");
@@ -61,7 +69,7 @@ export function CloudProjectsDialog({
     try {
       const { error } = await supabase
         .from("projects")
-        .update({ files: files as any, updated_at: new Date().toISOString() })
+        .update({ files: sanitize(files) as any, updated_at: new Date().toISOString() })
         .eq("id", id);
       if (error) throw error;
       setMsg("Project updated.");
