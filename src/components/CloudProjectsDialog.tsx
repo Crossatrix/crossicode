@@ -34,6 +34,14 @@ export function CloudProjectsDialog({
     refresh();
   }, [refresh]);
 
+  const sanitize = (f: Record<string, string>) => {
+    const out: Record<string, string> = {};
+    for (const [k, v] of Object.entries(f)) {
+      out[k] = typeof v === "string" ? v.replace(/\u0000/g, "") : String(v ?? "");
+    }
+    return out;
+  };
+
   const save = async () => {
     setBusy(true);
     setMsg(null);
