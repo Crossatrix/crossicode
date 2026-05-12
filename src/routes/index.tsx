@@ -173,6 +173,13 @@ function Index() {
           <span className="text-sm font-medium">AI Code Editor</span>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => setGithubOpen(true)}
+            className="p-1.5 hover:bg-accent/50 rounded"
+            title="GitHub sync"
+          >
+            <GitBranch className="h-4 w-4 text-muted-foreground" />
+          </button>
           {user ? (
             <>
               <button
