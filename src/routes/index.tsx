@@ -33,7 +33,17 @@ function Index() {
   const [isInstalled, setIsInstalled] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [cloudOpen, setCloudOpen] = useState(false);
+  const [githubOpen, setGithubOpen] = useState(false);
   const { user } = useAuth();
+
+  const handlePatchFiles = useCallback((patch: Record<string, string | null>) => {
+    const next = { ...store.filesRef.current };
+    for (const [p, v] of Object.entries(patch)) {
+      if (v === null) delete next[p];
+      else next[p] = v;
+    }
+    store.setFiles(next);
+  }, [store]);
 
   useEffect(() => {
     const onPrompt = (e: Event) => {
