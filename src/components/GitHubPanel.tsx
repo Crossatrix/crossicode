@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { X, Download, Upload, RefreshCw, GitBranch, GitPullRequest, Plus, Loader2, AlertTriangle, Check, ExternalLink, Github as GithubIcon } from "lucide-react";
+import { X, Download, Upload, RefreshCw, GitBranch, GitPullRequest, Plus, Loader2, AlertTriangle, Check, ExternalLink } from "lucide-react";
 import { useGitHubStore } from "../hooks/use-github-store";
 import { gh, parseRepoInput, GitHubError } from "../lib/github/client";
 import { listMyRepos, listBranches, cloneRepo, getBranchHead, getRepoMeta } from "../lib/github/repo";
@@ -254,7 +254,7 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
       <div className="bg-[#181825] border border-[#313244] rounded-lg w-full max-w-2xl max-h-[85vh] flex flex-col text-foreground">
         <div className="flex items-center justify-between px-4 py-3 border-b border-[#313244]">
           <div className="flex items-center gap-2">
-            <Github className="h-4 w-4" />
+            <GitBranch className="h-4 w-4" />
             <h2 className="text-sm font-semibold">GitHub Sync</h2>
             {gh_.repo && (
               <span className="text-xs text-muted-foreground">
