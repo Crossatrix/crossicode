@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import { X, Download, Upload, RefreshCw, GitBranch, GitPullRequest, Plus, Loader2, AlertTriangle, Check, ExternalLink } from "lucide-react";
 import { useGitHubStore } from "../hooks/use-github-store";
 import { gh, parseRepoInput, GitHubError } from "../lib/github/client";
