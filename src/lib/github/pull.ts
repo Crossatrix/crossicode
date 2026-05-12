@@ -1,11 +1,10 @@
 // @ts-ignore - no types
 import diff3Module from "diff3";
 import { getBranchHead, getCommit, getTreeRecursive, getBlobText } from "./repo";
+import { b64encodeBytes, isBinaryPath } from "./client";
 import type { PullResult, ConflictFile } from "./types";
 
 const diff3Merge: any = (diff3Module as any).diff3Merge || (diff3Module as any).default || diff3Module;
-
-const SKIP_BINARY_EXT = /\.(png|jpg|jpeg|gif|webp|ico|pdf|zip|tar|gz|bz2|7z|rar|mp3|mp4|mov|avi|wav|ogg|woff|woff2|ttf|otf|eot|class|jar|exe|dll|so|dylib|wasm)$/i;
 
 function threeWayMerge(base: string, ours: string, theirs: string): { merged: string; hasMarkers: boolean } {
   try {
@@ -36,6 +35,12 @@ function threeWayMerge(base: string, ours: string, theirs: string): { merged: st
   }
 }
 
+export interface BinaryUpdate {
+  path: string;
+  b64data: string;
+  deleted: boolean;
+}
+
 export async function pullFromRemote(
   token: string,
   owner: string,
@@ -44,15 +49,17 @@ export async function pullFromRemote(
   baseCommitSha: string,
   baseFiles: Record<string, string>,
   currentFiles: Record<string, string>,
+  baseBinaryFiles: Record<string, string>,
+  currentBinaryFiles: Record<string, string>,
   onProgress?: (msg: string) => void
-): Promise<PullResult> {
-  onProgress?.("Fetching remote head…");
+): Promise<PullResult & { binaryUpdates: BinaryUpdate[] }> {
+  onProgress?.("Fetching remote head\u2026");
   const remoteSha = await getBranchHead(token, owner, name, branch);
   if (remoteSha === baseCommitSha) {
-    return { upToDate: true, newCommitSha: remoteSha, cleanUpdates: {}, conflicts: [] };
+    return { upToDate: true, newCommitSha: remoteSha, cleanUpdates: {}, conflicts: [], binaryUpdates: [] };
   }
   const remoteCommit = await getCommit(token, owner, name, remoteSha);
-  onProgress?.("Reading remote tree…");
+  onProgress?.("Reading remote tree\u2026");
   const remoteTree = await getTreeRecursive(token, owner, name, remoteCommit.tree.sha);
 
   const remoteBlobs = new Map<string, { sha: string; size: number }>();
@@ -62,25 +69,89 @@ export async function pullFromRemote(
 
   const cleanUpdates: Record<string, string | null> = {};
   const conflicts: ConflictFile[] = [];
+  const binaryUpdates: BinaryUpdate[] = [];
 
-  // Files present in remote
-  const allPaths = new Set<string>([...remoteBlobs.keys(), ...Object.keys(baseFiles)]);
+  const allPaths = new Set<string>([
+    ...remoteBlobs.keys(),
+    ...Object.keys(baseFiles),
+    ...Object.keys(baseBinaryFiles),
+  ]);
   let i = 0;
   for (const path of allPaths) {
     i++;
-    if (i % 20 === 0) onProgress?.(`Comparing ${i}/${allPaths.size}…`);
+    if (i % 20 === 0) onProgress?.(`Comparing ${i}/${allPaths.size}\u2026`);
     const remote = remoteBlobs.get(path);
+    const isBinary = isBinaryPath(path) || baseBinaryFiles[path] !== undefined || currentBinaryFiles[path] !== undefined;
+
+    if (isBinary) {
+      const baseContent = baseBinaryFiles[path];
+      const localContent = currentBinaryFiles[path];
+      const localChanged = localContent !== baseContent;
+
+      if (!remote) {
+        if (baseContent === undefined) continue;
+        if (!localChanged) {
+          binaryUpdates.push({ path, b64data: "", deleted: true });
+        } else if (localContent === undefined) {
+          continue;
+        } else {
+          conflicts.push({
+            path,
+            base: "",
+            ours: "(binary, kept local)",
+            theirs: "(binary, deleted on remote)",
+            merged: "",
+            hasMarkers: true,
+          });
+        }
+        continue;
+      }
+
+      let remoteB64: string;
+      try {
+        const res = await fetch(`https://api.github.com/repos/${owner}/${name}/git/blobs/${remote.sha}`, {
+          headers: {
+            Accept: "application/vnd.github.raw",
+            Authorization: `Bearer ${token}`,
+            "X-GitHub-Api-Version": "2022-11-28",
+          },
+        });
+        if (!res.ok) throw new Error("fetch failed");
+        const buf = await res.arrayBuffer();
+        remoteB64 = b64encodeBytes(buf);
+      } catch {
+        onProgress?.(`Warning: could not fetch binary ${path}`);
+        continue;
+      }
+
+      if (baseContent === remoteB64) continue;
+      if (!localChanged) {
+        binaryUpdates.push({ path, b64data: remoteB64, deleted: false });
+      } else if (localContent === remoteB64) {
+        continue;
+      } else {
+        conflicts.push({
+          path,
+          base: "",
+          ours: "(binary, kept local version)",
+          theirs: "(remote version differs \u2014 manual merge required)",
+          merged: "",
+          hasMarkers: true,
+        });
+      }
+      continue;
+    }
+
+    // Text file handling
     const baseContent = baseFiles[path];
     const localContent = currentFiles[path];
     const localChanged = localContent !== baseContent;
 
     if (!remote) {
-      // Remote deleted
       if (baseContent === undefined) continue;
       if (!localChanged) {
         cleanUpdates[path] = null;
       } else if (localContent === undefined) {
-        // both deleted
         continue;
       } else {
         conflicts.push({
@@ -95,8 +166,10 @@ export async function pullFromRemote(
       continue;
     }
 
-    // Skip large/binary
-    if (remote.size > 1_000_000 || SKIP_BINARY_EXT.test(path)) continue;
+    if (remote.size > 5_000_000) {
+      onProgress?.(`Skipping large text file: ${path}`);
+      continue;
+    }
 
     let remoteContent: string;
     try {
@@ -105,11 +178,10 @@ export async function pullFromRemote(
       continue;
     }
 
-    if (baseContent === remoteContent) continue; // no remote change
+    if (baseContent === remoteContent) continue;
     if (!localChanged) {
       cleanUpdates[path] = remoteContent;
     } else if (localContent === remoteContent) {
-      // same edit
       continue;
     } else {
       const { merged, hasMarkers } = threeWayMerge(baseContent ?? "", localContent ?? "", remoteContent);
@@ -124,5 +196,5 @@ export async function pullFromRemote(
     }
   }
 
-  return { upToDate: false, newCommitSha: remoteSha, cleanUpdates, conflicts };
+  return { upToDate: false, newCommitSha: remoteSha, cleanUpdates, conflicts, binaryUpdates };
 }
