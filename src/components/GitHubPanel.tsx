@@ -1,6 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { Github as GithubIcon } from "lucide-react/icons/github";
-import { X, Download, Upload, RefreshCw, GitBranch, GitPullRequest, Plus, Loader2, AlertTriangle, Check, ExternalLink } from "lucide-react";
+import { X, Download, Upload, RefreshCw, GitBranch, GitPullRequest, Plus, Loader2, AlertTriangle, Check, ExternalLink, Github as GithubIcon } from "lucide-react";
 import { useGitHubStore } from "../hooks/use-github-store";
 import { gh, parseRepoInput, GitHubError } from "../lib/github/client";
 import { listMyRepos, listBranches, cloneRepo, getBranchHead, getRepoMeta } from "../lib/github/repo";
