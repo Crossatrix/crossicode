@@ -1,6 +1,6 @@
 import { createFileRoute } from "@tanstack/react-router";
 import { useState, useCallback, useEffect } from "react";
-import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2, Download, Files, Search, Smartphone, Cloud, LogIn, LogOut } from "lucide-react";
+import { PanelLeftClose, PanelLeftOpen, PanelRightClose, PanelRightOpen, Upload, Trash2, Code2, Download, Files, Search, Smartphone, Cloud, LogIn, LogOut, GitBranch } from "lucide-react";
 import { useEditorStore } from "../hooks/use-editor-store";
 import { getFileTree } from "../lib/file-system";
 import { FileTree } from "../components/FileTree";
@@ -10,6 +10,7 @@ import { ZipUploader } from "../components/ZipUploader";
 import { SearchPanel } from "../components/SearchPanel";
 import { AuthDialog } from "../components/AuthDialog";
 import { CloudProjectsDialog } from "../components/CloudProjectsDialog";
+import { GitHubPanel } from "../components/GitHubPanel";
 import { useAuth } from "../lib/use-auth";
 import { supabase } from "@/integrations/supabase/client";
 
@@ -32,7 +33,17 @@ function Index() {
   const [isInstalled, setIsInstalled] = useState(false);
   const [authOpen, setAuthOpen] = useState(false);
   const [cloudOpen, setCloudOpen] = useState(false);
+  const [githubOpen, setGithubOpen] = useState(false);
   const { user } = useAuth();
+
+  const handlePatchFiles = useCallback((patch: Record<string, string | null>) => {
+    const next = { ...store.filesRef.current };
+    for (const [p, v] of Object.entries(patch)) {
+      if (v === null) delete next[p];
+      else next[p] = v;
+    }
+    store.setFiles(next);
+  }, [store]);
 
   useEffect(() => {
     const onPrompt = (e: Event) => {
@@ -162,6 +173,13 @@ function Index() {
           <span className="text-sm font-medium">AI Code Editor</span>
         </div>
         <div className="flex items-center gap-1">
+          <button
+            onClick={() => setGithubOpen(true)}
+            className="p-1.5 hover:bg-accent/50 rounded"
+            title="GitHub sync"
+          >
+            <GitBranch className="h-4 w-4 text-muted-foreground" />
+          </button>
           {user ? (
             <>
               <button
@@ -338,6 +356,14 @@ function Index() {
           files={store.files}
           onClose={() => setCloudOpen(false)}
           onLoad={store.importFiles}
+        />
+      )}
+      {githubOpen && (
+        <GitHubPanel
+          files={store.files}
+          onClose={() => setGithubOpen(false)}
+          onImportFiles={store.importFiles}
+          onPatchFiles={handlePatchFiles}
         />
       )}
     </div>
