@@ -1,42 +1,101 @@
-## Goals
+## GitHub 2-Way Sync — Plan
 
-Fix three issues with the AI chat:
-1. Large file edits get truncated by the response token limit.
-2. Some models emit `<longcat_tool_call>...</longcat_tool_call>` instead of `[/( ... )]`, so tool calls aren't executed.
-3. No way to choose which model is used.
+Add full GitHub integration to the in-browser editor: clone any repo, edit, commit & push, pull updates, manage branches, open PRs, and resolve conflicts. Auth via Personal Access Token (PAT).
 
-## Changes
+### What the user gets
 
-### 1. Remove the message length limit for large edits
-**`src/lib/ai-chat.functions.ts`**
-- Raise `max_tokens` from 4096 to 32000 (or omit it so the provider default applies).
-- Accept an optional `model` field in the input schema; if present, use it instead of the hardcoded fallback list.
+- **GitHub button** in the top bar opens a "GitHub" dialog
+- **Token setup** — paste a PAT (with `repo` scope), stored in localStorage
+- **Clone repo** — paste `owner/repo` URL or pick from "My repos" list, choose branch, loads files into editor
+- **Branch bar** below top bar shows: current repo · branch dropdown · "↓ Pull" · "↑ Commit & Push" · "Open PR" · status badge ("clean" / "N changes" / "behind remote")
+- **Commit dialog** — message field, list of changed files with checkboxes, push button
+- **Pull / fetch** — manual button; on opening a project also auto-fetches and shows "behind by N commits" badge
+- **Branch management** — switch branch (warns if dirty), create new branch from current
+- **Pull Request** — title + body + base branch; opens PR via API, shows link
+- **Conflict resolution UI** — when remote file differs from local base, show 3-pane (base / yours / theirs) with "keep mine", "take theirs", or manual merge in editor
 
-**`src/components/ChatPanel.tsx` — continuation loop**
-- After each assistant reply, detect a *truncated* tool call: the response contains `[/( edit ...` or `[/( create ...` with no matching `)]` closing it.
-- When detected, automatically send a follow-up turn with a short user message like "continue the previous tool call from exactly where you stopped, do not repeat anything, end with `)]`" and append the new chunk to the previous assistant message before parsing.
-- Loop until the call closes or a max-continuation count (e.g. 5) is hit. This lets the AI emit very large file contents across multiple turns transparently.
+### Architecture
 
-### 2. Recognize alternative tool-call syntaxes
-**`src/components/ChatPanel.tsx`**
-- Extend `parseToolCalls` and `stripToolCalls` to also match:
-  - `<longcat_tool_call>NAME args...</longcat_tool_call>` (and similar `<tool_call>` variants), parsing the inner text as `tool args`.
-- Strengthen the system prompt to insist on `[/( ... )]`, but fall back gracefully when the model ignores it.
+```text
+src/lib/github/
+  client.ts          # fetch wrapper for api.github.com with PAT
+  repo.ts            # clone, listBranches, listRepos, getTree, getBlob
+  commit.ts          # createCommit (tree + commit + update ref)
+  pull.ts            # fetch latest, diff against local base
+  pr.ts              # createPullRequest, listPullRequests
+  merge.ts           # 3-way diff helpers (use 'diff3' lib)
+  types.ts           # GitHubRepo, Branch, CommitInfo, FileChange, Conflict
 
-### 3. Model selector in Settings
-**`src/hooks/use-editor-store.ts`**
-- Add `model` state persisted to `localStorage` (`code-editor-model`), default `"baidu/cobuddy:free"`. Expose `model` and `setModel`.
+src/components/github/
+  GitHubDialog.tsx          # main hub: token, repo picker, clone
+  GitHubBranchBar.tsx       # always-visible status bar when repo connected
+  CommitDialog.tsx          # stage + message + push
+  PullResultDialog.tsx      # shows incoming changes / conflicts
+  ConflictResolver.tsx      # per-file 3-pane resolver
+  CreatePRDialog.tsx        # PR title/body/base
+  TokenSetup.tsx            # PAT input + scope guide + test connection
 
-**`src/components/ChatPanel.tsx`**
-- Add a model `<select>` (with a few preset OpenRouter options) plus a free-text input for custom model IDs in the Settings panel.
-- Pass the chosen model to `chatWithAI({ data: { ..., model } })`.
+src/hooks/
+  use-github-store.ts       # repo, branch, baseSha, baseFiles (snapshot at clone/pull), token
+```
 
-**`src/routes/index.tsx`**
-- Wire `store.model` / `store.setModel` into `<ChatPanel />` props.
+### Data model (added to editor store + localStorage)
 
-## Technical notes
+```ts
+interface GitHubState {
+  token: string;
+  repo: { owner: string; name: string; defaultBranch: string } | null;
+  branch: string | null;
+  baseCommitSha: string | null;        // last sync point
+  baseFiles: Record<string,string>;    // file snapshots at baseCommitSha — for diff & conflict detection
+}
+```
 
-- Truncation detector: count unclosed `[/(` occurrences vs `)]` occurrences; if positive, treat as truncated.
-- Continuation merging: when the AI responds again, concatenate its `content` to the prior assistant message in `conversationHistory` so `parseToolCalls` sees the full call, then process tools as today.
-- Model preset list (initial): `baidu/cobuddy:free`, `openrouter/owl-alpha`, `google/gemini-2.0-flash-exp:free`, `meta-llama/llama-3.3-70b-instruct:free`. User can type any other ID.
-- No backend/database changes; everything stays client-side + the existing server function.
+Diff = compare current `files` vs `baseFiles`. Push creates a commit on top of `baseCommitSha`; if remote head moved, surface as "behind — pull first".
+
+### How sync works (no real git, pure REST API)
+
+- **Clone**: `GET /repos/{o}/{r}/git/trees/{branch}?recursive=1` → fetch each blob via `GET /git/blobs/{sha}` (base64 decode). Save to editor + `baseFiles`.
+- **Push**: 
+  1. For each changed file: `POST /git/blobs` → get sha
+  2. `POST /git/trees` with base_tree = current head tree, modifications + deletions
+  3. `POST /git/commits` with parents = [head sha], message
+  4. `PATCH /git/refs/heads/{branch}` to new commit sha (fails if remote moved → trigger pull-first flow)
+- **Pull**: Fetch remote head; for each file changed remotely:
+  - Not changed locally → take remote
+  - Changed locally + same content → no-op
+  - Changed locally + different → **conflict**, queue for `ConflictResolver`
+- **Branches**: `GET /repos/.../branches`, `POST /git/refs` to create
+- **PRs**: `POST /repos/.../pulls` with title, body, head, base
+
+### Conflict resolution
+
+Use the `diff3` npm package (tiny, browser-safe, pure JS) to produce a merged file with `<<<<<<<` markers when auto-merge fails. UI shows per-file: "Keep mine", "Take theirs", or "Edit manually" (opens in editor with markers; user removes markers and clicks resolved).
+
+### Security notes
+
+- PAT is sensitive but stays in user's browser (localStorage) — same model as the existing OpenRouter API key. Add a clear warning + "use fine-grained PAT scoped to one repo" guidance in `TokenSetup`.
+- All GitHub calls are direct from browser → `api.github.com` (CORS-allowed). No backend needed.
+- Optional later: store encrypted token in cloud `projects` row for cross-device.
+
+### Dependencies to add
+
+- `diff3` (~3KB) for 3-way merge
+- `@octokit/rest` is tempting but adds 80KB; prefer plain `fetch` wrappers for size
+
+### Out of scope (v1)
+
+- Submodules, LFS, large binary files (>1MB skipped with warning)
+- Force push, rebase, cherry-pick
+- Webhook-based realtime updates (no backend)
+- OAuth login (PAT only, per your choice)
+
+### Build order
+
+1. Token setup + GitHub API client + repo listing
+2. Clone repo into editor + branch bar UI
+3. Commit & push (manual button)
+4. Pull + change detection
+5. Conflict resolver
+6. Branch switching & creation
+7. Pull request creation
