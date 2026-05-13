@@ -4,9 +4,23 @@ import { Upload, FolderUp } from "lucide-react";
 
 interface ZipUploaderProps {
   onFilesLoaded: (files: Record<string, string>) => void;
+  onBinaryFilesLoaded?: (files: Record<string, string>) => void;
 }
 
-export function ZipUploader({ onFilesLoaded }: ZipUploaderProps) {
+const BINARY_EXTS = new Set([
+  "png", "jpg", "jpeg", "gif", "bmp", "webp", "ico", "icns", "cur", "ani",
+  "svg",
+  "pdf", "zip", "tar", "gz", "bz2", "7z", "rar",
+  "mp3", "mp4", "mov", "avi", "wav", "ogg", "webm", "flac", "aac",
+  "woff", "woff2", "ttf", "otf", "eot",
+  "class", "jar", "exe", "dll", "so", "dylib", "wasm", "bin", "dat",
+  "sqlite", "db", "plist", "pom", "iml", "swp", "swo", "pyc", "pyo",
+  "o", "a", "obj", "snap", "dmg", "iso", "img", "msi", "deb", "rpm",
+  "apk", "ipa", "aab",
+  "heic", "heif", "raw", "cr2", "nef", "arw",
+]);
+
+export function ZipUploader({ onFilesLoaded, onBinaryFilesLoaded }: ZipUploaderProps) {
   const [dragging, setDragging] = useState(false);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -16,13 +30,12 @@ export function ZipUploader({ onFilesLoaded }: ZipUploaderProps) {
       setLoading(true);
       try {
         const zip = await JSZip.loadAsync(file);
-        const files: Record<string, string> = {};
+        const textFiles: Record<string, string> = {};
+        const binaryFiles: Record<string, string> = {};
 
         const entries = Object.entries(zip.files).filter(
           ([, f]) => !f.dir
         );
-
-        const imageExts = new Set(["png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "ico"]);
 
         for (const [path, zipEntry] of entries) {
           if (
@@ -35,49 +48,50 @@ export function ZipUploader({ onFilesLoaded }: ZipUploaderProps) {
 
           try {
             const ext = path.split(".").pop()?.toLowerCase() || "";
-            if (imageExts.has(ext) && ext !== "svg") {
-              // Store binary images as base64
+            if (BINARY_EXTS.has(ext)) {
               const content = await zipEntry.async("base64");
-              files[path] = content;
+              binaryFiles[path] = content;
             } else {
               const content = await zipEntry.async("string");
-              files[path] = content;
+              textFiles[path] = content;
             }
           } catch {
             // skip unreadable files
           }
         }
 
-        // Normalize paths: strip common prefix
-        const keys = Object.keys(files);
-        if (keys.length > 0) {
-          const parts = keys[0].split("/");
+        // Normalize paths: strip common prefix for both
+        const allKeys = [...Object.keys(textFiles), ...Object.keys(binaryFiles)];
+        if (allKeys.length > 0) {
+          const parts = allKeys[0].split("/");
           let commonPrefix = "";
           for (let i = 0; i < parts.length - 1; i++) {
             const prefix = parts.slice(0, i + 1).join("/") + "/";
-            if (keys.every((k) => k.startsWith(prefix))) {
+            if (allKeys.every((k) => k.startsWith(prefix))) {
               commonPrefix = prefix;
             } else break;
           }
 
           if (commonPrefix) {
-            const normalized: Record<string, string> = {};
-            for (const [k, v] of Object.entries(files)) {
-              normalized[k.slice(commonPrefix.length)] = v;
-            }
-            onFilesLoaded(normalized);
+            const normText: Record<string, string> = {};
+            const normBin: Record<string, string> = {};
+            for (const [k, v] of Object.entries(textFiles)) normText[k.slice(commonPrefix.length)] = v;
+            for (const [k, v] of Object.entries(binaryFiles)) normBin[k.slice(commonPrefix.length)] = v;
+            onFilesLoaded(normText);
+            if (onBinaryFilesLoaded) onBinaryFilesLoaded(normBin);
             return;
           }
         }
 
-        onFilesLoaded(files);
+        onFilesLoaded(textFiles);
+        if (onBinaryFilesLoaded) onBinaryFilesLoaded(binaryFiles);
       } catch (err) {
         alert("Failed to read zip file: " + (err instanceof Error ? err.message : "Unknown error"));
       } finally {
         setLoading(false);
       }
     },
-    [onFilesLoaded]
+    [onFilesLoaded, onBinaryFilesLoaded]
   );
 
   const handleDrop = useCallback(
