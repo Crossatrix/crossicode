@@ -61,6 +61,19 @@ export async function getBlobText(token: string, owner: string, name: string, sh
   return data.content;
 }
 
+// Returns raw base64 for a blob (no decoding). Used for binary files.
+export async function getBlobBase64(token: string, owner: string, name: string, sha: string) {
+  const data = await gh<{ content: string; encoding: string; size: number }>(
+    token,
+    `/repos/${owner}/${name}/git/blobs/${sha}`
+  );
+  if (data.encoding === "base64") return data.content.replace(/\s/g, "");
+  const bytes = new TextEncoder().encode(data.content);
+  let bin = "";
+  for (const b of bytes) bin += String.fromCharCode(b);
+  return btoa(bin);
+}
+
 export interface CloneResult {
   files: Record<string, string>;
   commitSha: string;
@@ -86,7 +99,6 @@ export async function cloneRepo(
   const files: Record<string, string> = {};
   const skipped: string[] = [];
 
-  // Limit concurrency
   let done = 0;
   const queue = [...blobs];
   const workers = Array.from({ length: 8 }, async () => {
@@ -95,13 +107,18 @@ export async function cloneRepo(
       if (!e) break;
       done++;
       if (done % 10 === 0) onProgress?.(`Downloading ${done}/${blobs.length}…`);
-      if ((e.size ?? 0) > 1_000_000 || SKIP_BINARY_EXT.test(e.path)) {
+      if ((e.size ?? 0) > MAX_FILE_SIZE) {
         skipped.push(e.path);
         continue;
       }
       try {
-        const text = await getBlobText(token, owner, name, e.sha);
-        files[e.path] = text;
+        if (isBinaryPath(e.path)) {
+          const b64 = await getBlobBase64(token, owner, name, e.sha);
+          files[e.path] = encodeBinary(b64);
+        } else {
+          const text = await getBlobText(token, owner, name, e.sha);
+          files[e.path] = text;
+        }
       } catch {
         skipped.push(e.path);
       }
@@ -111,3 +128,4 @@ export async function cloneRepo(
 
   return { files, commitSha, treeSha: commit.tree.sha, skipped };
 }
+
