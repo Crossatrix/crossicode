@@ -1,4 +1,4 @@
-import { gh, b64encode, b64encodeBytes, GitHubError, isBinaryPath } from "./client";
+import { gh, b64encode, GitHubError } from "./client";
 import { getCommit } from "./repo";
 import type { FileChange } from "./types";
 
@@ -26,8 +26,6 @@ export interface PushOptions {
   baseCommitSha: string;
   files: Record<string, string>;
   baseFiles: Record<string, string>;
-  binaryFiles?: Record<string, string>;     // path -> base64
-  baseBinaryFiles?: Record<string, string>;  // path -> base64 (to detect changes)
   message: string;
   selectedPaths?: string[]; // if set, only commit these
 }
@@ -36,30 +34,12 @@ export interface PushResult {
   newCommitSha: string;
   newTreeSha: string;
   pushedFiles: string[];
-  binaryFilesUploaded: number;
-  binaryFilesSkipped: string[]; // paths that couldn't be uploaded
 }
 
 export async function commitAndPush(opts: PushOptions): Promise<PushResult> {
-  const { token, owner, name, branch, baseCommitSha, files, baseFiles, binaryFiles, baseBinaryFiles, message, selectedPaths } = opts;
+  const { token, owner, name, branch, baseCommitSha, files, baseFiles, message, selectedPaths } = opts;
 
-  // Compute text-only diffs first
-  const textChanges = diffFiles(files, baseFiles);
-
-  // Compute binary diffs
-  const binaryChanges: FileChange[] = [];
-  if (binaryFiles && baseBinaryFiles) {
-    const binKeys = new Set([...Object.keys(binaryFiles), ...Object.keys(baseBinaryFiles)]);
-    for (const path of binKeys) {
-      const a = baseBinaryFiles[path];
-      const b = binaryFiles[path];
-      if (a === undefined && b !== undefined) binaryChanges.push({ path, status: "added" });
-      else if (a !== undefined && b === undefined) binaryChanges.push({ path, status: "deleted" });
-      else if (a !== b) binaryChanges.push({ path, status: "modified" });
-    }
-  }
-
-  const allChanges = [...textChanges, ...binaryChanges].sort((a, b) => a.path.localeCompare(b.path));
+  const allChanges = diffFiles(files, baseFiles);
   const changes = selectedPaths
     ? allChanges.filter((c) => selectedPaths.includes(c.path))
     : allChanges;
@@ -72,39 +52,17 @@ export async function commitAndPush(opts: PushOptions): Promise<PushResult> {
   // Build tree entries
   const treeEntries: Array<{
     path: string;
-    mode: "100644" | "100755";
+    mode: "100644";
     type: "blob";
     sha?: string | null;
     content?: string;
   }> = [];
 
-  const binaryFilesSkipped: string[] = [];
-  let binaryFilesUploaded = 0;
-
   for (const ch of changes) {
     if (ch.status === "deleted") {
       treeEntries.push({ path: ch.path, mode: "100644", type: "blob", sha: null });
-    } else if (binaryFiles && binaryFiles[ch.path] !== undefined) {
-      // Binary file: upload raw bytes as base64 blob
-      try {
-        const b64data = binaryFiles[ch.path];
-        // Decode the base64 string back to ArrayBuffer for the blob API
-        const binaryString = atob(b64data);
-        const bytes = new Uint8Array(binaryString.length);
-        for (let i = 0; i < binaryString.length; i++) bytes[i] = binaryString.charCodeAt(i);
-        const rawB64 = b64encodeBytes(bytes);
-
-        const blob = await gh<{ sha: string }>(token, `/repos/${owner}/${name}/git/blobs`, {
-          method: "POST",
-          body: JSON.stringify({ content: rawB64, encoding: "base64" }),
-        });
-        treeEntries.push({ path: ch.path, mode: "100644", type: "blob", sha: blob.sha });
-        binaryFilesUploaded++;
-      } catch {
-        binaryFilesSkipped.push(ch.path);
-      }
     } else {
-      // Text file
+      // Create blob
       const content = files[ch.path];
       const blob = await gh<{ sha: string }>(token, `/repos/${owner}/${name}/git/blobs`, {
         method: "POST",
@@ -141,7 +99,5 @@ export async function commitAndPush(opts: PushOptions): Promise<PushResult> {
     newCommitSha: newCommit.sha,
     newTreeSha: newTree.sha,
     pushedFiles: changes.map((c) => c.path),
-    binaryFilesUploaded,
-    binaryFilesSkipped,
   };
 }

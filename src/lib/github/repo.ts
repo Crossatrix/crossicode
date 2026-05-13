@@ -1,7 +1,7 @@
-import { gh, b64decode, b64encodeBytes, isBinaryPath } from "./client";
+import { gh, b64decode } from "./client";
 import type { BranchInfo, GitHubRepoListItem } from "./types";
 
-const LARGE_FILE_THRESHOLD = 5 * 1024 * 1024;
+const SKIP_BINARY_EXT = /\.(png|jpg|jpeg|gif|webp|ico|pdf|zip|tar|gz|bz2|7z|rar|mp3|mp4|mov|avi|wav|ogg|woff|woff2|ttf|otf|eot|class|jar|exe|dll|so|dylib|wasm)$/i;
 
 export async function listMyRepos(token: string): Promise<GitHubRepoListItem[]> {
   const data = await gh<any[]>(token, "/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator");
@@ -60,7 +60,6 @@ export async function getBlobText(token: string, owner: string, name: string, sh
 
 export interface CloneResult {
   files: Record<string, string>;
-  binaryFiles: Record<string, string>;
   commitSha: string;
   treeSha: string;
   skipped: string[];
@@ -73,18 +72,18 @@ export async function cloneRepo(
   branch: string,
   onProgress?: (msg: string) => void
 ): Promise<CloneResult> {
-  onProgress?.("Resolving branch\u2026");
+  onProgress?.("Resolving branch…");
   const commitSha = await getBranchHead(token, owner, name, branch);
   const commit = await getCommit(token, owner, name, commitSha);
-  onProgress?.("Fetching tree\u2026");
+  onProgress?.("Fetching tree…");
   const tree = await getTreeRecursive(token, owner, name, commit.tree.sha);
   if (tree.truncated) onProgress?.("Warning: tree truncated (very large repo).");
 
   const blobs = tree.tree.filter((e) => e.type === "blob");
   const files: Record<string, string> = {};
-  const binaryFiles: Record<string, string> = {};
   const skipped: string[] = [];
 
+  // Limit concurrency
   let done = 0;
   const queue = [...blobs];
   const workers = Array.from({ length: 8 }, async () => {
@@ -92,32 +91,14 @@ export async function cloneRepo(
       const e = queue.shift();
       if (!e) break;
       done++;
-      if (done % 10 === 0) onProgress?.(`Downloading ${done}/${blobs.length}\u2026`);
-
-      const size = e.size ?? 0;
-      const binary = isBinaryPath(e.path);
-
-      if (size > LARGE_FILE_THRESHOLD && !binary) {
+      if (done % 10 === 0) onProgress?.(`Downloading ${done}/${blobs.length}…`);
+      if ((e.size ?? 0) > 1_000_000 || SKIP_BINARY_EXT.test(e.path)) {
         skipped.push(e.path);
         continue;
       }
-
       try {
-        if (binary || size > 1_000_000) {
-          const res = await fetch(`https://api.github.com/repos/${owner}/${name}/git/blobs/${e.sha}`, {
-            headers: {
-              Accept: "application/vnd.github.raw",
-              Authorization: `Bearer ${token}`,
-              "X-GitHub-Api-Version": "2022-11-28",
-            },
-          });
-          if (!res.ok) throw new Error("fetch failed");
-          const buf = await res.arrayBuffer();
-          binaryFiles[e.path] = b64encodeBytes(buf);
-        } else {
-          const text = await getBlobText(token, owner, name, e.sha);
-          files[e.path] = text;
-        }
+        const text = await getBlobText(token, owner, name, e.sha);
+        files[e.path] = text;
       } catch {
         skipped.push(e.path);
       }
@@ -125,5 +106,5 @@ export async function cloneRepo(
   });
   await Promise.all(workers);
 
-  return { files, binaryFiles, commitSha, treeSha: commit.tree.sha, skipped };
+  return { files, commitSha, treeSha: commit.tree.sha, skipped };
 }

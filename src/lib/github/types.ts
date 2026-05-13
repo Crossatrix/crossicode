@@ -30,16 +30,9 @@ export interface ConflictFile {
   hasMarkers: boolean;
 }
 
-export interface BinaryUpdate {
-  path: string;
-  b64data: string;
-  deleted: boolean;
-}
-
 export interface PullResult {
   upToDate: boolean;
   newCommitSha: string;
   cleanUpdates: Record<string, string | null>; // null = deleted
   conflicts: ConflictFile[];
-  binaryUpdates: BinaryUpdate[];
 }
