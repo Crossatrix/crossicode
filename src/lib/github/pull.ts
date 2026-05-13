@@ -2,7 +2,7 @@
 import diff3Module from "diff3";
 import { getBranchHead, getCommit, getTreeRecursive, getBlobText } from "./repo";
 import { b64encodeBytes, isBinaryPath } from "./client";
-import type { PullResult, ConflictFile } from "./types";
+import type { PullResult, ConflictFile, BinaryUpdate } from "./types";
 
 const diff3Merge: any = (diff3Module as any).diff3Merge || (diff3Module as any).default || diff3Module;
 
@@ -35,12 +35,6 @@ function threeWayMerge(base: string, ours: string, theirs: string): { merged: st
   }
 }
 
-export interface BinaryUpdate {
-  path: string;
-  b64data: string;
-  deleted: boolean;
-}
-
 export async function pullFromRemote(
   token: string,
   owner: string,
@@ -52,7 +46,7 @@ export async function pullFromRemote(
   baseBinaryFiles: Record<string, string>,
   currentBinaryFiles: Record<string, string>,
   onProgress?: (msg: string) => void
-): Promise<PullResult & { binaryUpdates: BinaryUpdate[] }> {
+): Promise<PullResult> {
   onProgress?.("Fetching remote head\u2026");
   const remoteSha = await getBranchHead(token, owner, name, branch);
   if (remoteSha === baseCommitSha) {
