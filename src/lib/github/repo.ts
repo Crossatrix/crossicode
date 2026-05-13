@@ -1,7 +1,10 @@
 import { gh, b64decode } from "./client";
 import type { BranchInfo, GitHubRepoListItem } from "./types";
+import { encodeBinary, isBinaryPath } from "./binary";
 
-const SKIP_BINARY_EXT = /\.(png|jpg|jpeg|gif|webp|ico|pdf|zip|tar|gz|bz2|7z|rar|mp3|mp4|mov|avi|wav|ogg|woff|woff2|ttf|otf|eot|class|jar|exe|dll|so|dylib|wasm)$/i;
+// Hard upper bound for files we sync. GitHub Contents API supports blobs up to
+// ~100MB, but we cap lower to keep localStorage usable.
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
 export async function listMyRepos(token: string): Promise<GitHubRepoListItem[]> {
   const data = await gh<any[]>(token, "/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator");
