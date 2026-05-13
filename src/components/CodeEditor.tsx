@@ -182,13 +182,26 @@ export function CodeEditor({
         })}
       </div>
       {/* Editor or Image Preview */}
-      {activeTab && isImageFile(activeTab) ? (
+      {activeTab && activeIsImage ? (
         <div className="flex-1 flex items-center justify-center overflow-auto bg-[#1e1e2e] p-4">
           <img
             src={getImageDataUrl(activeTab, activeContent)}
             alt={activeTab.split("/").pop() || "image"}
             className="max-w-full max-h-full object-contain rounded shadow-lg"
           />
+        </div>
+      ) : activeTab && activeIsBinary ? (
+        <div className="flex-1 flex items-center justify-center bg-[#1e1e2e] p-6 text-center">
+          <div className="space-y-2 max-w-sm">
+            <p className="text-sm font-medium text-foreground">Binary file</p>
+            <p className="text-xs text-muted-foreground font-mono break-all">{activeTab}</p>
+            <p className="text-xs text-muted-foreground">{formatBytes(binaryByteLength(activeContent))} — not editable in the text editor.</p>
+            <a
+              href={getImageDataUrl(activeTab, activeContent)}
+              download={activeTab.split("/").pop()}
+              className="inline-block mt-2 text-xs text-blue-400 hover:underline"
+            >Download</a>
+          </div>
         </div>
       ) : (
         <div ref={editorRef} className="flex-1 overflow-hidden" />
