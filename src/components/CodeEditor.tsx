@@ -88,9 +88,11 @@ export function CodeEditor({
   onChangeRef.current = onFileChange;
 
   const activeContent = activeTab ? files[activeTab] ?? "" : "";
+  const activeIsBinary = isBinaryEncoded(activeContent);
+  const activeIsImage = !!activeTab && (isImageFile(activeTab) || (activeIsBinary && /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(activeTab)));
 
   useEffect(() => {
-    if (!editorRef.current || !activeTab || isImageFile(activeTab)) {
+    if (!editorRef.current || !activeTab || activeIsImage || activeIsBinary) {
       if (viewRef.current) { viewRef.current.destroy(); viewRef.current = null; }
       return;
     }
