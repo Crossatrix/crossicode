@@ -576,29 +576,47 @@ function ConflictsView({
 }) {
   const c = conflicts[index];
   const update = (v: string) => setResolved({ ...resolved, [c.path]: v });
-  const allResolved = conflicts.every((c) => !resolved[c.path]?.includes("<<<<<<<"));
+  const isBinary = !!c.binary;
+  const allResolved = conflicts.every((cf) =>
+    cf.binary ? resolved[cf.path] !== undefined : !resolved[cf.path]?.includes("<<<<<<<")
+  );
   return (
     <div className="space-y-2">
       <div className="text-xs text-amber-400">
-        {conflicts.length} conflict(s). {cleanCount} clean update(s) will also apply. Remove all <code>{"<<<<<<<"}</code> markers to finish.
+        {conflicts.length} conflict(s). {cleanCount} clean update(s) will also apply.
+        {!isBinary && <> Remove all <code>{"<<<<<<<"}</code> markers to finish.</>}
       </div>
       <div className="flex items-center gap-2 text-xs">
         <button disabled={index === 0} onClick={() => setIndex(index - 1)} className="px-2 py-1 bg-[#313244] rounded disabled:opacity-30">‹</button>
         <span>{index + 1} / {conflicts.length}</span>
         <button disabled={index === conflicts.length - 1} onClick={() => setIndex(index + 1)} className="px-2 py-1 bg-[#313244] rounded disabled:opacity-30">›</button>
         <span className="font-mono truncate">{c.path}</span>
+        {isBinary && <span className="text-[10px] px-1.5 py-0.5 bg-purple-500/20 text-purple-300 rounded">binary</span>}
       </div>
       <div className="flex gap-1">
         <button onClick={() => update(c.ours)} className="px-2 py-1 text-[10px] bg-[#313244] rounded">Keep mine</button>
         <button onClick={() => update(c.theirs)} className="px-2 py-1 text-[10px] bg-[#313244] rounded">Take theirs</button>
-        <button onClick={() => update(c.merged)} className="px-2 py-1 text-[10px] bg-[#313244] rounded">Reset to merged</button>
+        {!isBinary && (
+          <button onClick={() => update(c.merged)} className="px-2 py-1 text-[10px] bg-[#313244] rounded">Reset to merged</button>
+        )}
       </div>
-      <textarea
-        value={resolved[c.path] ?? c.merged}
-        onChange={(e) => update(e.target.value)}
-        rows={14}
-        className="w-full bg-[#11111b] border border-[#313244] rounded px-2 py-1.5 text-xs font-mono"
-      />
+      {isBinary ? (
+        <div className="text-xs text-muted-foreground bg-[#11111b] border border-[#313244] rounded p-3">
+          Binary file — choose which version to keep.
+          {resolved[c.path] !== undefined && (
+            <div className="mt-2 text-green-400">
+              ✓ {resolved[c.path] === c.ours ? "Keeping yours" : "Taking theirs"}
+            </div>
+          )}
+        </div>
+      ) : (
+        <textarea
+          value={resolved[c.path] ?? c.merged}
+          onChange={(e) => update(e.target.value)}
+          rows={14}
+          className="w-full bg-[#11111b] border border-[#313244] rounded px-2 py-1.5 text-xs font-mono"
+        />
+      )}
       <div className="flex gap-2">
         <button onClick={onCancel} className="px-3 py-1.5 bg-[#313244] text-xs rounded">Cancel pull</button>
         <button
@@ -606,7 +624,7 @@ function ConflictsView({
           disabled={busy || !allResolved}
           className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 disabled:opacity-50 text-white text-xs rounded"
         >
-          {allResolved ? "Apply resolutions" : "Resolve markers first"}
+          {allResolved ? "Apply resolutions" : "Resolve all conflicts first"}
         </button>
       </div>
     </div>

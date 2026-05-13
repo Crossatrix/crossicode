@@ -35,6 +35,8 @@ function getLanguage(path: string) {
   }
 }
 
+import { isBinaryEncoded, decodeBinaryBase64, binaryByteLength } from "../lib/github/binary";
+
 const IMAGE_EXTS = new Set(["png", "jpg", "jpeg", "gif", "bmp", "svg", "webp", "ico"]);
 
 function isImageFile(path: string) {
@@ -42,21 +44,34 @@ function isImageFile(path: string) {
   return IMAGE_EXTS.has(ext);
 }
 
-function getImageDataUrl(path: string, content: string) {
+function mimeFor(path: string) {
   const ext = path.split(".").pop()?.toLowerCase() || "";
-  if (ext === "svg") return `data:image/svg+xml;base64,${btoa(content)}`;
-  // For binary images stored as base64 or raw text
-  const mime = ext === "jpg" || ext === "jpeg" ? "image/jpeg"
+  return ext === "jpg" || ext === "jpeg" ? "image/jpeg"
     : ext === "png" ? "image/png"
     : ext === "gif" ? "image/gif"
     : ext === "webp" ? "image/webp"
     : ext === "bmp" ? "image/bmp"
     : ext === "ico" ? "image/x-icon"
-    : "image/png";
-  // If content looks like base64, use it directly; otherwise try as-is
+    : ext === "svg" ? "image/svg+xml"
+    : "application/octet-stream";
+}
+
+function getImageDataUrl(path: string, content: string) {
+  if (isBinaryEncoded(content)) {
+    return `data:${mimeFor(path)};base64,${decodeBinaryBase64(content)}`;
+  }
+  const ext = path.split(".").pop()?.toLowerCase() || "";
+  if (ext === "svg") return `data:image/svg+xml;base64,${btoa(content)}`;
+  const mime = mimeFor(path);
   const isBase64 = /^[A-Za-z0-9+/=\s]+$/.test(content) && content.length > 32;
   if (isBase64) return `data:${mime};base64,${content.replace(/\s/g, "")}`;
   return `data:${mime};base64,${btoa(content)}`;
+}
+
+function formatBytes(n: number) {
+  if (n < 1024) return `${n} B`;
+  if (n < 1024 * 1024) return `${(n / 1024).toFixed(1)} KB`;
+  return `${(n / 1024 / 1024).toFixed(2)} MB`;
 }
 
 export function CodeEditor({
@@ -73,9 +88,11 @@ export function CodeEditor({
   onChangeRef.current = onFileChange;
 
   const activeContent = activeTab ? files[activeTab] ?? "" : "";
+  const activeIsBinary = isBinaryEncoded(activeContent);
+  const activeIsImage = !!activeTab && (isImageFile(activeTab) || (activeIsBinary && /\.(png|jpe?g|gif|webp|bmp|ico)$/i.test(activeTab)));
 
   useEffect(() => {
-    if (!editorRef.current || !activeTab || isImageFile(activeTab)) {
+    if (!editorRef.current || !activeTab || activeIsImage || activeIsBinary) {
       if (viewRef.current) { viewRef.current.destroy(); viewRef.current = null; }
       return;
     }
@@ -165,13 +182,26 @@ export function CodeEditor({
         })}
       </div>
       {/* Editor or Image Preview */}
-      {activeTab && isImageFile(activeTab) ? (
+      {activeTab && activeIsImage ? (
         <div className="flex-1 flex items-center justify-center overflow-auto bg-[#1e1e2e] p-4">
           <img
             src={getImageDataUrl(activeTab, activeContent)}
             alt={activeTab.split("/").pop() || "image"}
             className="max-w-full max-h-full object-contain rounded shadow-lg"
           />
+        </div>
+      ) : activeTab && activeIsBinary ? (
+        <div className="flex-1 flex items-center justify-center bg-[#1e1e2e] p-6 text-center">
+          <div className="space-y-2 max-w-sm">
+            <p className="text-sm font-medium text-foreground">Binary file</p>
+            <p className="text-xs text-muted-foreground font-mono break-all">{activeTab}</p>
+            <p className="text-xs text-muted-foreground">{formatBytes(binaryByteLength(activeContent))} — not editable in the text editor.</p>
+            <a
+              href={getImageDataUrl(activeTab, activeContent)}
+              download={activeTab.split("/").pop()}
+              className="inline-block mt-2 text-xs text-blue-400 hover:underline"
+            >Download</a>
+          </div>
         </div>
       ) : (
         <div ref={editorRef} className="flex-1 overflow-hidden" />

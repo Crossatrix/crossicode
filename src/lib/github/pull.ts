@@ -1,11 +1,12 @@
 // @ts-ignore - no types
 import diff3Module from "diff3";
-import { getBranchHead, getCommit, getTreeRecursive, getBlobText } from "./repo";
+import { getBranchHead, getCommit, getTreeRecursive, getBlobText, getBlobBase64 } from "./repo";
+import { isBinaryPath, encodeBinary, isBinaryEncoded } from "./binary";
 import type { PullResult, ConflictFile } from "./types";
 
 const diff3Merge: any = (diff3Module as any).diff3Merge || (diff3Module as any).default || diff3Module;
 
-const SKIP_BINARY_EXT = /\.(png|jpg|jpeg|gif|webp|ico|pdf|zip|tar|gz|bz2|7z|rar|mp3|mp4|mov|avi|wav|ogg|woff|woff2|ttf|otf|eot|class|jar|exe|dll|so|dylib|wasm)$/i;
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
 function threeWayMerge(base: string, ours: string, theirs: string): { merged: string; hasMarkers: boolean } {
   try {
@@ -95,12 +96,18 @@ export async function pullFromRemote(
       continue;
     }
 
-    // Skip large/binary
-    if (remote.size > 1_000_000 || SKIP_BINARY_EXT.test(path)) continue;
+    if (remote.size > MAX_FILE_SIZE) continue;
+
+    const treatBinary = isBinaryPath(path) || isBinaryEncoded(localContent) || isBinaryEncoded(baseContent);
 
     let remoteContent: string;
     try {
-      remoteContent = await getBlobText(token, owner, name, remote.sha);
+      if (treatBinary) {
+        const b64 = await getBlobBase64(token, owner, name, remote.sha);
+        remoteContent = encodeBinary(b64);
+      } else {
+        remoteContent = await getBlobText(token, owner, name, remote.sha);
+      }
     } catch {
       continue;
     }
@@ -109,8 +116,18 @@ export async function pullFromRemote(
     if (!localChanged) {
       cleanUpdates[path] = remoteContent;
     } else if (localContent === remoteContent) {
-      // same edit
       continue;
+    } else if (treatBinary) {
+      // Binary conflict: no text-merge possible.
+      conflicts.push({
+        path,
+        base: baseContent ?? "",
+        ours: localContent ?? "",
+        theirs: remoteContent,
+        merged: localContent ?? remoteContent,
+        hasMarkers: false,
+        binary: true,
+      });
     } else {
       const { merged, hasMarkers } = threeWayMerge(baseContent ?? "", localContent ?? "", remoteContent);
       conflicts.push({

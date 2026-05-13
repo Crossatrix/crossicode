@@ -1,5 +1,6 @@
 import { gh, b64encode, GitHubError } from "./client";
 import { getCommit } from "./repo";
+import { isBinaryEncoded, decodeBinaryBase64 } from "./binary";
 import type { FileChange } from "./types";
 
 export function diffFiles(
@@ -62,11 +63,11 @@ export async function commitAndPush(opts: PushOptions): Promise<PushResult> {
     if (ch.status === "deleted") {
       treeEntries.push({ path: ch.path, mode: "100644", type: "blob", sha: null });
     } else {
-      // Create blob
       const content = files[ch.path];
+      const b64 = isBinaryEncoded(content) ? decodeBinaryBase64(content) : b64encode(content);
       const blob = await gh<{ sha: string }>(token, `/repos/${owner}/${name}/git/blobs`, {
         method: "POST",
-        body: JSON.stringify({ content: b64encode(content), encoding: "base64" }),
+        body: JSON.stringify({ content: b64, encoding: "base64" }),
       });
       treeEntries.push({ path: ch.path, mode: "100644", type: "blob", sha: blob.sha });
     }

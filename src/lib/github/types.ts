@@ -26,8 +26,9 @@ export interface ConflictFile {
   base: string;
   ours: string;
   theirs: string;
-  merged: string; // diff3 merged with markers
+  merged: string; // diff3 merged with markers (text only); for binary: "ours"
   hasMarkers: boolean;
+  binary?: boolean; // when true, no text-merge possible — pick ours or theirs
 }
 
 export interface PullResult {
