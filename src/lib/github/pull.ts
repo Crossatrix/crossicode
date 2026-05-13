@@ -1,11 +1,12 @@
 // @ts-ignore - no types
 import diff3Module from "diff3";
-import { getBranchHead, getCommit, getTreeRecursive, getBlobText } from "./repo";
+import { getBranchHead, getCommit, getTreeRecursive, getBlobText, getBlobBase64 } from "./repo";
+import { isBinaryPath, encodeBinary, isBinaryEncoded } from "./binary";
 import type { PullResult, ConflictFile } from "./types";
 
 const diff3Merge: any = (diff3Module as any).diff3Merge || (diff3Module as any).default || diff3Module;
 
-const SKIP_BINARY_EXT = /\.(png|jpg|jpeg|gif|webp|ico|pdf|zip|tar|gz|bz2|7z|rar|mp3|mp4|mov|avi|wav|ogg|woff|woff2|ttf|otf|eot|class|jar|exe|dll|so|dylib|wasm)$/i;
+const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
 function threeWayMerge(base: string, ours: string, theirs: string): { merged: string; hasMarkers: boolean } {
   try {
