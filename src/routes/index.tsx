@@ -45,6 +45,15 @@ function Index() {
     store.setFiles(next);
   }, [store]);
 
+  const handlePatchBinaryFiles = useCallback((patch: Record<string, string>) => {
+    const next = { ...store.binaryFiles };
+    for (const [p, v] of Object.entries(patch)) {
+      if (v === "" || v === null) delete next[p];
+      else next[p] = v;
+    }
+    store.setBinaryFiles(next);
+  }, [store]);
+
   useEffect(() => {
     const onPrompt = (e: Event) => {
       e.preventDefault();
@@ -227,13 +236,12 @@ function Index() {
                   import("jszip").then(({ default: JSZip }) => {
                     JSZip.loadAsync(file).then(async (zip) => {
                       const files: Record<string, string> = {};
-                      for (const [path, entry] of Object.entries(zip.files)) {
-                        if (entry.dir || path.includes("node_modules/") || path.includes(".git/") || path.startsWith("__MACOSX/")) continue;
+                      for (const [, entry] of Object.entries(zip.files)) {
+                        if (entry.dir || (typeof entry.name === "string" && (entry.name.includes("node_modules/") || entry.name.includes(".git/") || entry.name.startsWith("__MACOSX/")))) continue;
                         try {
-                          files[path] = await entry.async("string");
+                          files[entry.name] = await entry.async("string");
                         } catch {}
                       }
-                      // Normalize common prefix
                       const keys = Object.keys(files);
                       if (keys.length > 0) {
                         const parts = keys[0].split("/");
@@ -361,8 +369,10 @@ function Index() {
       {githubOpen && (
         <GitHubPanel
           files={store.files}
+          binaryFiles={store.binaryFiles}
           onClose={() => setGithubOpen(false)}
           onImportFiles={store.importFiles}
+          onImportBinaryFiles={handlePatchBinaryFiles}
           onPatchFiles={handlePatchFiles}
         />
       )}
