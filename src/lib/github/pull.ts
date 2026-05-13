@@ -96,12 +96,18 @@ export async function pullFromRemote(
       continue;
     }
 
-    // Skip large/binary
-    if (remote.size > 1_000_000 || SKIP_BINARY_EXT.test(path)) continue;
+    if (remote.size > MAX_FILE_SIZE) continue;
+
+    const treatBinary = isBinaryPath(path) || isBinaryEncoded(localContent) || isBinaryEncoded(baseContent);
 
     let remoteContent: string;
     try {
-      remoteContent = await getBlobText(token, owner, name, remote.sha);
+      if (treatBinary) {
+        const b64 = await getBlobBase64(token, owner, name, remote.sha);
+        remoteContent = encodeBinary(b64);
+      } else {
+        remoteContent = await getBlobText(token, owner, name, remote.sha);
+      }
     } catch {
       continue;
     }
@@ -110,8 +116,18 @@ export async function pullFromRemote(
     if (!localChanged) {
       cleanUpdates[path] = remoteContent;
     } else if (localContent === remoteContent) {
-      // same edit
       continue;
+    } else if (treatBinary) {
+      // Binary conflict: no text-merge possible.
+      conflicts.push({
+        path,
+        base: baseContent ?? "",
+        ours: localContent ?? "",
+        theirs: remoteContent,
+        merged: localContent ?? remoteContent,
+        hasMarkers: false,
+        binary: true,
+      });
     } else {
       const { merged, hasMarkers } = threeWayMerge(baseContent ?? "", localContent ?? "", remoteContent);
       conflicts.push({
