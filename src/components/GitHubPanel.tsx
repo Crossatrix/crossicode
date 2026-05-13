@@ -1,23 +1,25 @@
 import { useState, useEffect } from "react";
 import { X, Download, Upload, RefreshCw, GitBranch, GitPullRequest, Plus, Loader2, AlertTriangle, Check, ExternalLink } from "lucide-react";
 import { useGitHubStore } from "../hooks/use-github-store";
-import { gh, parseRepoInput, GitHubError } from "../lib/github/client";
+import { gh, parseRepoInput, GitHubError, isBinaryPath } from "../lib/github/client";
 import { listMyRepos, listBranches, cloneRepo, getBranchHead, getRepoMeta } from "../lib/github/repo";
 import { commitAndPush, diffFiles } from "../lib/github/commit";
 import { pullFromRemote } from "../lib/github/pull";
 import { createBranch, createPullRequest } from "../lib/github/pr";
-import type { GitHubRepoListItem, BranchInfo, PullResult, ConflictFile } from "../lib/github/types";
+import type { GitHubRepoListItem, BranchInfo, PullResult, ConflictFile, BinaryUpdate } from "../lib/github/types";
 
 interface Props {
   files: Record<string, string>;
+  binaryFiles?: Record<string, string>;
   onClose: () => void;
   onImportFiles: (files: Record<string, string>) => void;
+  onImportBinaryFiles?: (files: Record<string, string>) => void;
   onPatchFiles: (patch: Record<string, string | null>) => void; // null = delete
 }
 
 type Mode = "main" | "token" | "clone" | "commit" | "pull" | "conflicts" | "pr" | "newbranch";
 
-export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Props) {
+export function GitHubPanel({ files, binaryFiles, onClose, onImportFiles, onImportBinaryFiles, onPatchFiles }: Props) {
   const gh_ = useGitHubStore();
   const [mode, setMode] = useState<Mode>(gh_.token ? (gh_.repo ? "main" : "clone") : "token");
   const [busy, setBusy] = useState(false);
@@ -52,7 +54,22 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
   // new branch
   const [newBranchName, setNewBranchName] = useState("");
 
-  const changes = gh_.repo ? diffFiles(files, gh_.baseFiles) : [];
+  const currentBinaryFiles = binaryFiles || {};
+
+  // Compute changes for text and binary files
+  const textChanges = gh_.repo ? diffFiles(files, gh_.baseFiles) : [];
+  const binaryChanges: { path: string; status: "added" | "modified" | "deleted" }[] = [];
+  if (gh_.repo) {
+    const binKeys = new Set([...Object.keys(currentBinaryFiles), ...Object.keys(gh_.baseBinaryFiles)]);
+    for (const path of binKeys) {
+      const a = gh_.baseBinaryFiles[path];
+      const b = currentBinaryFiles[path];
+      if (a === undefined && b !== undefined) binaryChanges.push({ path, status: "added" });
+      else if (a !== undefined && b === undefined) binaryChanges.push({ path, status: "deleted" });
+      else if (a !== b) binaryChanges.push({ path, status: "modified" });
+    }
+  }
+  const changes = [...textChanges, ...binaryChanges].sort((a, b) => a.path.localeCompare(b.path));
 
   const wrap = async (fn: () => Promise<void>) => {
     setBusy(true);
@@ -71,7 +88,6 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
   // --- TOKEN ---
   const saveToken = () => wrap(async () => {
     if (!tokenInput.trim()) throw new Error("Token required");
-    // verify
     await gh(tokenInput, "/user");
     gh_.setToken(tokenInput.trim());
     setMode(gh_.repo ? "main" : "clone");
@@ -101,14 +117,21 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
     if (!pendingRepo || !selectedBranch) return;
     const res = await cloneRepo(gh_.token, pendingRepo.owner, pendingRepo.name, selectedBranch, setProgress);
     onImportFiles(res.files);
+    if (onImportBinaryFiles && Object.keys(res.binaryFiles).length > 0) {
+      onImportBinaryFiles(res.binaryFiles);
+    }
     gh_.setRepo(
       { owner: pendingRepo.owner, name: pendingRepo.name, defaultBranch: pendingRepo.defaultBranch },
       selectedBranch,
       res.commitSha
     );
     gh_.setBaseFiles(res.files);
+    gh_.setBaseBinaryFiles(res.binaryFiles);
     setMode("main");
-    if (res.skipped.length) setError(`Cloned. Skipped ${res.skipped.length} binary/large files.`);
+    const msgs: string[] = ["Cloned."];
+    if (res.skipped.length) msgs.push(`Skipped ${res.skipped.length} large/binary files.`);
+    if (Object.keys(res.binaryFiles).length) msgs.push(`Loaded ${Object.keys(res.binaryFiles).length} binary files.`);
+    setError(msgs.join(" "));
   });
 
   // --- COMMIT ---
@@ -128,18 +151,32 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
       baseCommitSha: gh_.baseCommitSha,
       files,
       baseFiles: gh_.baseFiles,
+      binaryFiles: currentBinaryFiles,
+      baseBinaryFiles: gh_.baseBinaryFiles,
       message: commitMessage,
       selectedPaths: Array.from(selectedPaths),
     });
     // Update base for committed paths
     const newBase = { ...gh_.baseFiles };
+    const newBaseBinary = { ...gh_.baseBinaryFiles };
     for (const p of res.pushedFiles) {
-      if (files[p] === undefined) delete newBase[p];
-      else newBase[p] = files[p];
+      if (isBinaryPath(p) || currentBinaryFiles[p] !== undefined) {
+        if (currentBinaryFiles[p] === undefined) delete newBaseBinary[p];
+        else newBaseBinary[p] = currentBinaryFiles[p];
+      } else {
+        if (files[p] === undefined) delete newBase[p];
+        else newBase[p] = files[p];
+      }
     }
     gh_.setBaseFiles(newBase);
+    gh_.setBaseBinaryFiles(newBaseBinary);
     gh_.setBaseSha(res.newCommitSha);
     setMode("main");
+
+    const msgs = [`Pushed ${res.pushedFiles.length} file(s).`];
+    if (res.binaryFilesUploaded) msgs.push(`${res.binaryFilesUploaded} binary file(s) uploaded.`);
+    if (res.binaryFilesSkipped.length) msgs.push(`Skipped: ${res.binaryFilesSkipped.join(", ")}.`);
+    setError(msgs.join(" "));
   });
 
   // --- PULL ---
@@ -153,6 +190,8 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
       gh_.baseCommitSha,
       gh_.baseFiles,
       files,
+      gh_.baseBinaryFiles,
+      currentBinaryFiles,
       setProgress
     );
     setPullResult(res);
@@ -162,20 +201,42 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
       return;
     }
     if (res.conflicts.length === 0) {
-      // Apply clean updates
+      // Apply clean text updates
       onPatchFiles(res.cleanUpdates);
+
+      // Apply binary updates
+      if (res.binaryUpdates.length && onImportBinaryFiles) {
+        const binPatch: Record<string, string> = {};
+        for (const bu of res.binaryUpdates) {
+          if (bu.deleted) {
+            binPatch[bu.path] = "";
+          } else {
+            binPatch[bu.path] = bu.b64data;
+          }
+        }
+        onImportBinaryFiles(binPatch);
+      }
+
       const newBase = { ...gh_.baseFiles };
+      const newBaseBinary = { ...gh_.baseBinaryFiles };
       for (const [p, v] of Object.entries(res.cleanUpdates)) {
         if (v === null) delete newBase[p];
         else newBase[p] = v;
       }
+      for (const bu of res.binaryUpdates) {
+        if (bu.deleted) {
+          delete newBaseBinary[bu.path];
+        } else {
+          newBaseBinary[bu.path] = bu.b64data;
+        }
+      }
       gh_.setBaseFiles(newBase);
+      gh_.setBaseBinaryFiles(newBaseBinary);
       gh_.setBaseSha(res.newCommitSha);
       setMode("main");
     } else {
       setConflictIndex(0);
       setConflictsResolved({});
-      // Pre-fill resolved with merged (with markers) so editor shows them
       const initial: Record<string, string> = {};
       for (const c of res.conflicts) initial[c.path] = c.merged;
       setConflictsResolved(initial);
@@ -189,13 +250,21 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
     for (const [p, v] of Object.entries(conflictsResolved)) patch[p] = v;
     onPatchFiles(patch);
     const newBase = { ...gh_.baseFiles };
+    const newBaseBinary = { ...gh_.baseBinaryFiles };
     for (const [p, v] of Object.entries(pullResult.cleanUpdates)) {
       if (v === null) delete newBase[p];
       else newBase[p] = v;
     }
-    // For conflicts: mark base = remote ("theirs") so a subsequent push only includes user's resolution
     for (const c of pullResult.conflicts) newBase[c.path] = c.theirs;
+    for (const bu of pullResult.binaryUpdates) {
+      if (bu.deleted) {
+        delete newBaseBinary[bu.path];
+      } else {
+        newBaseBinary[bu.path] = bu.b64data;
+      }
+    }
     gh_.setBaseFiles(newBase);
+    gh_.setBaseBinaryFiles(newBaseBinary);
     gh_.setBaseSha(pullResult.newCommitSha);
     setMode("main");
     setPullResult(null);
@@ -238,8 +307,14 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
     }
     const res = await cloneRepo(gh_.token, gh_.repo.owner, gh_.repo.name, b, setProgress);
     onImportFiles(res.files);
+    if (onImportBinaryFiles && Object.keys(res.binaryFiles).length > 0) {
+      onImportBinaryFiles(res.binaryFiles);
+    } else if (onImportBinaryFiles) {
+      onImportBinaryFiles({});
+    }
     gh_.setBranch(b, res.commitSha);
     gh_.setBaseFiles(res.files);
+    gh_.setBaseBinaryFiles(res.binaryFiles);
   });
 
   // Load branches when on main
@@ -424,6 +499,7 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
                           {c.status === "added" ? "+" : c.status === "deleted" ? "−" : "M"}
                         </span>
                         <span className="truncate">{c.path}</span>
+                        {isBinaryPath(c.path) && <span className="text-[10px] text-muted-foreground shrink-0">(binary)</span>}
                       </div>
                     ))}
                   </div>
@@ -463,6 +539,7 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
                       {c.status === "added" ? "+" : c.status === "deleted" ? "−" : "M"}
                     </span>
                     <span className="truncate">{c.path}</span>
+                    {isBinaryPath(c.path) && <span className="text-[10px] text-muted-foreground shrink-0">(binary)</span>}
                   </label>
                 ))}
               </div>
