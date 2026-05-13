@@ -1,5 +1,6 @@
 import { gh, b64encode, GitHubError } from "./client";
 import { getCommit } from "./repo";
+import { isBinaryEncoded, decodeBinaryBase64 } from "./binary";
 import type { FileChange } from "./types";
 
 export function diffFiles(
