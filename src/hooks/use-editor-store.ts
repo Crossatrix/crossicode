@@ -14,15 +14,26 @@ const CHAT_KEY = "code-editor-chat";
 const DIFF_KEY = "code-editor-diffs";
 const API_KEY_KEY = "code-editor-api-key";
 const MODEL_KEY = "code-editor-model";
+const BINARY_FILES_KEY = "code-editor-binary-files";
 const DEFAULT_MODEL = "baidu/cobuddy:free";
 
 export interface ChatMessage {
   role: "user" | "assistant" | "system";
-  content: string;
+}
+
+function loadBinaryFiles(): Record<string, string> {
+  if (typeof window === "undefined") return {};
+  try {
+    const raw = localStorage.getItem(BINARY_FILES_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch {
+    return {};
+  }
 }
 
 export function useEditorStore() {
   const [files, setFilesState] = useState<Record<string, string>>(loadFiles);
+  const [binaryFiles, setBinaryFilesState] = useState<Record<string, string>>(loadBinaryFiles);
   const [openTabs, setOpenTabs] = useState<string[]>([]);
   const [activeTab, setActiveTab] = useState<string | null>(null);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(() => {
@@ -44,7 +55,7 @@ export function useEditorStore() {
     }
   });
   const [apiKey, setApiKeyState] = useState(() => (typeof window === "undefined" ? "" : localStorage.getItem(API_KEY_KEY) || ""));
-  const [model, setModelState] = useState(() => (typeof window === "undefined" ? DEFAULT_MODEL : localStorage.getItem(MODEL_KEY) || DEFAULT_MODEL));
+  const [model, setModelState] = useState(() => (typeof window === "undefined" ? DEFAULT_MODEL : localStorage.getItem) || DEFAULT_MODEL(MODEL_KEY));
 
   const filesRef = useRef(files);
   filesRef.current = files;
@@ -60,6 +71,13 @@ export function useEditorStore() {
   const setFiles = useCallback((newFiles: Record<string, string>) => {
     setFilesState(newFiles);
     saveFiles(newFiles);
+  }, []);
+
+  const setBinaryFiles = useCallback((newFiles: Record<string, string>) => {
+    setBinaryFilesState(newFiles);
+    try {
+      localStorage.setItem(BINARY_FILES_KEY, JSON.stringify(newFiles));
+    } catch {}
   }, []);
 
   const updateFile = useCallback((path: string, content: string) => {
@@ -100,7 +118,6 @@ export function useEditorStore() {
   const deleteFile = useCallback((path: string) => {
     setFilesState((prev) => {
       const next = { ...prev };
-      // Delete file or all files under folder path
       for (const key of Object.keys(next)) {
         if (key === path || key.startsWith(path + "/")) {
           delete next[key];
@@ -125,10 +142,12 @@ export function useEditorStore() {
   const clearAll = useCallback(() => {
     clearFiles();
     setFilesState({});
+    setBinaryFilesState({});
     setOpenTabs([]);
     setActiveTab(null);
     setChatMessages([]);
     setDiffs([]);
+    try { localStorage.removeItem(BINARY_FILES_KEY); } catch {}
   }, []);
 
   const setApiKey = useCallback((key: string) => {
@@ -158,7 +177,6 @@ export function useEditorStore() {
     setDiffs((prev) => {
       const entry = prev.find((d) => d.id === id);
       if (!entry || entry.reverted) return prev;
-      // Revert the file
       setFilesState((f) => {
         const next = { ...f, [entry.path]: entry.before };
         saveFiles(next);
@@ -170,6 +188,7 @@ export function useEditorStore() {
 
   return {
     files,
+    binaryFiles,
     openTabs,
     activeTab,
     chatMessages,
@@ -180,6 +199,7 @@ export function useEditorStore() {
     model,
     setModel,
     setFiles,
+    setBinaryFiles,
     updateFile,
     openFile,
     closeTab,
