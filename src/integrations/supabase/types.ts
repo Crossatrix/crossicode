@@ -14,6 +14,30 @@ export type Database = {
   }
   public: {
     Tables: {
+      github_installations: {
+        Row: {
+          account_login: string
+          installation_id: number
+          installed_at: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          account_login: string
+          installation_id: number
+          installed_at?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          account_login?: string
+          installation_id?: number
+          installed_at?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       projects: {
         Row: {
           created_at: string
