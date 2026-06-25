@@ -71,13 +71,28 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
     }
   };
 
-  // --- TOKEN ---
-  const saveToken = () => wrap(async () => {
-    if (!tokenInput.trim()) throw new Error("Token required");
-    // verify
-    await gh(tokenInput, "/user");
-    gh_.setToken(tokenInput.trim());
+  // --- GITHUB APP INSTALL ---
+  const openInstallWindow = () => {
+    if (!APP_SLUG) {
+      setError(
+        "GitHub App slug not configured. Set VITE_GITHUB_APP_SLUG to your app's slug."
+      );
+      return;
+    }
+    const url = `https://github.com/apps/${APP_SLUG}/installations/new`;
+    window.open(url, "github-install", "width=900,height=750");
+  };
+
+  const submitManualInstall = () => wrap(async () => {
+    const id = Number(manualInstallId.trim());
+    if (!Number.isFinite(id) || id <= 0) throw new Error("Enter a numeric installation ID");
+    await gh_.connectInstallation(id);
     setMode(gh_.repo ? "main" : "clone");
+  });
+
+  const refreshAfterInstall = () => wrap(async () => {
+    await gh_.refreshConnection();
+    // also try to pull installation_id from URL params if present
   });
 
   // --- CLONE ---
