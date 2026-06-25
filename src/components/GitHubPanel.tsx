@@ -492,10 +492,25 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
                 )}
               </div>
 
-              <div className="flex gap-2 pt-2 border-t border-[#313244]">
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-[#313244]">
                 <button onClick={() => setMode("clone")} className="text-xs text-blue-400 hover:underline">Clone different repo</button>
-                <button onClick={() => setMode("token")} className="text-xs text-blue-400 hover:underline">Change token</button>
-                <button onClick={() => { gh_.disconnect(); setMode("clone"); }} className="text-xs text-red-400 hover:underline ml-auto">Disconnect repo</button>
+                {gh_.connection && (
+                  <span className="text-[10px] text-muted-foreground self-center">
+                    GitHub App: {gh_.connection.accountLogin}
+                  </span>
+                )}
+                <button
+                  onClick={() => { gh_.disconnect(); setMode("clone"); }}
+                  className="text-xs text-red-400 hover:underline ml-auto"
+                >
+                  Disconnect repo
+                </button>
+                <button
+                  onClick={() => wrap(async () => { await gh_.disconnectApp(); setMode("connect"); })}
+                  className="text-xs text-red-400 hover:underline"
+                >
+                  Disconnect GitHub App
+                </button>
               </div>
             </div>
           )}
