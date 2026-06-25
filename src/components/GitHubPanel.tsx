@@ -15,17 +15,20 @@ interface Props {
   onPatchFiles: (patch: Record<string, string | null>) => void; // null = delete
 }
 
-type Mode = "main" | "token" | "clone" | "commit" | "pull" | "conflicts" | "pr" | "newbranch";
+type Mode = "main" | "connect" | "clone" | "commit" | "pull" | "conflicts" | "pr" | "newbranch";
+
+const APP_SLUG = (import.meta as any).env?.VITE_GITHUB_APP_SLUG || "";
 
 export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Props) {
   const gh_ = useGitHubStore();
-  const [mode, setMode] = useState<Mode>(gh_.token ? (gh_.repo ? "main" : "clone") : "token");
+  const initialMode: Mode = gh_.connection ? (gh_.repo ? "main" : "clone") : "connect";
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  // token
-  const [tokenInput, setTokenInput] = useState(gh_.token);
+  // app install
+  const [manualInstallId, setManualInstallId] = useState("");
 
   // clone
   const [repoInput, setRepoInput] = useState("");
@@ -68,13 +71,28 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
     }
   };
 
-  // --- TOKEN ---
-  const saveToken = () => wrap(async () => {
-    if (!tokenInput.trim()) throw new Error("Token required");
-    // verify
-    await gh(tokenInput, "/user");
-    gh_.setToken(tokenInput.trim());
+  // --- GITHUB APP INSTALL ---
+  const openInstallWindow = () => {
+    if (!APP_SLUG) {
+      setError(
+        "GitHub App slug not configured. Set VITE_GITHUB_APP_SLUG to your app's slug."
+      );
+      return;
+    }
+    const url = `https://github.com/apps/${APP_SLUG}/installations/new`;
+    window.open(url, "github-install", "width=900,height=750");
+  };
+
+  const submitManualInstall = () => wrap(async () => {
+    const id = Number(manualInstallId.trim());
+    if (!Number.isFinite(id) || id <= 0) throw new Error("Enter a numeric installation ID");
+    await gh_.connectInstallation(id);
     setMode(gh_.repo ? "main" : "clone");
+  });
+
+  const refreshAfterInstall = () => wrap(async () => {
+    await gh_.refreshConnection();
+    // also try to pull installation_id from URL params if present
   });
 
   // --- CLONE ---
@@ -244,10 +262,29 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
 
   // Load branches when on main
   useEffect(() => {
-    if (mode === "main" && gh_.repo && gh_.token && branches.length === 0) {
+    if (mode === "main" && gh_.repo && gh_.connection && branches.length === 0) {
       listBranches(gh_.token, gh_.repo.owner, gh_.repo.name).then(setBranches).catch(() => {});
     }
-  }, [mode, gh_.repo, gh_.token, branches.length]);
+  }, [mode, gh_.repo, gh_.connection, branches.length]);
+
+  // Auto-switch to main once the GitHub App becomes connected (e.g. after the
+  // install popup posts back and the connection is refreshed).
+  useEffect(() => {
+    if (gh_.connection && mode === "connect") {
+      setMode(gh_.repo ? "main" : "clone");
+    }
+  }, [gh_.connection, mode, gh_.repo]);
+
+  // Listen for the install callback (postMessage from /github/callback).
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (e.data && e.data.type === "github-app-installed") {
+        gh_.refreshConnection();
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [gh_]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
@@ -279,32 +316,57 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
             </div>
           )}
 
-          {mode === "token" && (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">
-                Paste a GitHub Personal Access Token. Use a{" "}
-                <a className="text-blue-400 underline" target="_blank" href="https://github.com/settings/tokens?type=beta">
-                  fine-grained token
-                </a>{" "}
-                with <b>Contents: Read &amp; Write</b> and <b>Pull requests: Read &amp; Write</b> scopes for the repos you want to sync.
-              </p>
-              <input
-                type="password"
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                placeholder="ghp_…"
-                className="w-full bg-[#11111b] border border-[#313244] rounded px-2 py-1.5 text-sm font-mono"
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Token stays in your browser (localStorage). It is sent directly to api.github.com.
-              </p>
-              <button
-                onClick={saveToken}
-                disabled={busy}
-                className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded"
-              >
-                Save & verify
-              </button>
+          {mode === "connect" && (
+            <div className="space-y-3">
+              <div className="text-xs text-muted-foreground space-y-2">
+                <p>
+                  Connect your account by installing the <b>Lovable Sync</b> GitHub App
+                  on the repositories you want to sync.
+                </p>
+                <ol className="list-decimal pl-4 space-y-1">
+                  <li>Click <b>Install GitHub App</b> below.</li>
+                  <li>Pick the repos you want to grant access to, then confirm.</li>
+                  <li>You'll be sent back here automatically.</li>
+                </ol>
+                <p>
+                  Commits are authored as the App; no personal access token is ever
+                  stored in your browser.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={openInstallWindow}
+                  disabled={busy}
+                  className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded flex items-center gap-1.5"
+                >
+                  <ExternalLink className="h-3 w-3" /> Install GitHub App
+                </button>
+                <button
+                  onClick={refreshAfterInstall}
+                  disabled={busy}
+                  className="px-3 py-1.5 bg-[#313244] hover:bg-[#414155] text-xs rounded flex items-center gap-1.5"
+                >
+                  <RefreshCw className="h-3 w-3" /> I've installed it
+                </button>
+              </div>
+              <details className="text-[11px] text-muted-foreground">
+                <summary className="cursor-pointer">Have an installation ID? Connect manually</summary>
+                <div className="flex gap-2 mt-2">
+                  <input
+                    value={manualInstallId}
+                    onChange={(e) => setManualInstallId(e.target.value)}
+                    placeholder="e.g. 12345678"
+                    className="flex-1 bg-[#11111b] border border-[#313244] rounded px-2 py-1.5 text-sm font-mono"
+                  />
+                  <button
+                    onClick={submitManualInstall}
+                    disabled={busy}
+                    className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded"
+                  >
+                    Connect
+                  </button>
+                </div>
+              </details>
             </div>
           )}
 
@@ -430,10 +492,25 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
                 )}
               </div>
 
-              <div className="flex gap-2 pt-2 border-t border-[#313244]">
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-[#313244]">
                 <button onClick={() => setMode("clone")} className="text-xs text-blue-400 hover:underline">Clone different repo</button>
-                <button onClick={() => setMode("token")} className="text-xs text-blue-400 hover:underline">Change token</button>
-                <button onClick={() => { gh_.disconnect(); setMode("clone"); }} className="text-xs text-red-400 hover:underline ml-auto">Disconnect repo</button>
+                {gh_.connection && (
+                  <span className="text-[10px] text-muted-foreground self-center">
+                    GitHub App: {gh_.connection.accountLogin}
+                  </span>
+                )}
+                <button
+                  onClick={() => { gh_.disconnect(); setMode("clone"); }}
+                  className="text-xs text-red-400 hover:underline ml-auto"
+                >
+                  Disconnect repo
+                </button>
+                <button
+                  onClick={() => wrap(async () => { await gh_.disconnectApp(); setMode("connect"); })}
+                  className="text-xs text-red-400 hover:underline"
+                >
+                  Disconnect GitHub App
+                </button>
               </div>
             </div>
           )}

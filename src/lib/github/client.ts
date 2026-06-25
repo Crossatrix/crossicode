@@ -1,4 +1,4 @@
-const API = "https://api.github.com";
+import { ghCall } from "../github.functions";
 
 export class GitHubError extends Error {
   status: number;
@@ -8,39 +8,42 @@ export class GitHubError extends Error {
   }
 }
 
+/**
+ * Proxy all GitHub API calls through our server function so the installation
+ * token (minted from the GitHub App private key) never reaches the browser.
+ * The first arg is kept for backward compat with existing callers and ignored.
+ */
 export async function gh<T = any>(
-  token: string,
+  _ignoredToken: string,
   path: string,
   init?: RequestInit
 ): Promise<T> {
-  const res = await fetch(API + path, {
-    ...init,
-    headers: {
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      Authorization: `Bearer ${token}`,
-      ...(init?.body ? { "Content-Type": "application/json" } : {}),
-      ...(init?.headers || {}),
+  const body =
+    init?.body == null
+      ? undefined
+      : typeof init.body === "string"
+        ? init.body
+        : JSON.stringify(init.body);
+
+  const res = await ghCall({
+    data: {
+      path,
+      method: (init?.method || "GET").toUpperCase(),
+      body,
     },
   });
-  if (!res.ok) {
-    let msg = res.statusText;
-    try {
-      const j = await res.json();
-      msg = j.message || msg;
-    } catch {}
-    throw new GitHubError(res.status, msg);
+
+  if (res.status >= 400) {
+    throw new GitHubError(res.status, res.message || `GitHub ${res.status}`);
   }
   if (res.status === 204) return undefined as T;
-  return res.json();
+  return res.body as T;
 }
 
 export function parseRepoInput(input: string): { owner: string; name: string } | null {
   const s = input.trim().replace(/\.git$/, "");
-  // owner/name
   const slash = s.match(/^([^\/\s]+)\/([^\/\s]+)$/);
   if (slash) return { owner: slash[1], name: slash[2] };
-  // url
   const url = s.match(/github\.com[:/]([^\/\s]+)\/([^\/\s]+)/);
   if (url) return { owner: url[1], name: url[2] };
   return null;

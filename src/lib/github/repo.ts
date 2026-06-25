@@ -7,8 +7,13 @@ import { encodeBinary, isBinaryPath } from "./binary";
 const MAX_FILE_SIZE = 25 * 1024 * 1024;
 
 export async function listMyRepos(token: string): Promise<GitHubRepoListItem[]> {
-  const data = await gh<any[]>(token, "/user/repos?per_page=100&sort=updated&affiliation=owner,collaborator");
-  return data.map((r) => ({
+  // GitHub App installation tokens can only see repos that the App was
+  // explicitly granted access to. Use the installation-scoped endpoint.
+  const data = await gh<{ repositories: any[] }>(
+    token,
+    "/installation/repositories?per_page=100"
+  );
+  return (data.repositories || []).map((r) => ({
     full_name: r.full_name,
     default_branch: r.default_branch,
     private: r.private,
