@@ -15,17 +15,20 @@ interface Props {
   onPatchFiles: (patch: Record<string, string | null>) => void; // null = delete
 }
 
-type Mode = "main" | "token" | "clone" | "commit" | "pull" | "conflicts" | "pr" | "newbranch";
+type Mode = "main" | "connect" | "clone" | "commit" | "pull" | "conflicts" | "pr" | "newbranch";
+
+const APP_SLUG = (import.meta as any).env?.VITE_GITHUB_APP_SLUG || "";
 
 export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Props) {
   const gh_ = useGitHubStore();
-  const [mode, setMode] = useState<Mode>(gh_.token ? (gh_.repo ? "main" : "clone") : "token");
+  const initialMode: Mode = gh_.connection ? (gh_.repo ? "main" : "clone") : "connect";
+  const [mode, setMode] = useState<Mode>(initialMode);
   const [busy, setBusy] = useState(false);
   const [progress, setProgress] = useState("");
   const [error, setError] = useState<string | null>(null);
 
-  // token
-  const [tokenInput, setTokenInput] = useState(gh_.token);
+  // app install
+  const [manualInstallId, setManualInstallId] = useState("");
 
   // clone
   const [repoInput, setRepoInput] = useState("");
