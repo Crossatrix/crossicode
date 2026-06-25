@@ -297,32 +297,57 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
             </div>
           )}
 
-          {mode === "token" && (
-            <div className="space-y-2">
-              <p className="text-xs text-muted-foreground">
-                Paste a GitHub Personal Access Token. Use a{" "}
-                <a className="text-blue-400 underline" target="_blank" href="https://github.com/settings/tokens?type=beta">
-                  fine-grained token
-                </a>{" "}
-                with <b>Contents: Read &amp; Write</b> and <b>Pull requests: Read &amp; Write</b> scopes for the repos you want to sync.
-              </p>
-              <input
-                type="password"
-                value={tokenInput}
-                onChange={(e) => setTokenInput(e.target.value)}
-                placeholder="ghp_…"
-                className="w-full bg-[#11111b] border border-[#313244] rounded px-2 py-1.5 text-sm font-mono"
-              />
-              <p className="text-[10px] text-muted-foreground">
-                Token stays in your browser (localStorage). It is sent directly to api.github.com.
-              </p>
-              <button
-                onClick={saveToken}
-                disabled={busy}
-                className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded"
-              >
-                Save & verify
-              </button>
+          {mode === "connect" && (
+            <div className="space-y-3">
+              <div className="text-xs text-muted-foreground space-y-2">
+                <p>
+                  Connect your account by installing the <b>Lovable Sync</b> GitHub App
+                  on the repositories you want to sync.
+                </p>
+                <ol className="list-decimal pl-4 space-y-1">
+                  <li>Click <b>Install GitHub App</b> below.</li>
+                  <li>Pick the repos you want to grant access to, then confirm.</li>
+                  <li>You'll be sent back here automatically.</li>
+                </ol>
+                <p>
+                  Commits are authored as the App; no personal access token is ever
+                  stored in your browser.
+                </p>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <button
+                  onClick={openInstallWindow}
+                  disabled={busy}
+                  className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded flex items-center gap-1.5"
+                >
+                  <ExternalLink className="h-3 w-3" /> Install GitHub App
+                </button>
+                <button
+                  onClick={refreshAfterInstall}
+                  disabled={busy}
+                  className="px-3 py-1.5 bg-[#313244] hover:bg-[#414155] text-xs rounded flex items-center gap-1.5"
+                >
+                  <RefreshCw className="h-3 w-3" /> I've installed it
+                </button>
+              </div>
+              <details className="text-[11px] text-muted-foreground">
+                <summary className="cursor-pointer">Have an installation ID? Connect manually</summary>
+                <div className="flex gap-2 mt-2">
+                  <input
+                    value={manualInstallId}
+                    onChange={(e) => setManualInstallId(e.target.value)}
+                    placeholder="e.g. 12345678"
+                    className="flex-1 bg-[#11111b] border border-[#313244] rounded px-2 py-1.5 text-sm font-mono"
+                  />
+                  <button
+                    onClick={submitManualInstall}
+                    disabled={busy}
+                    className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded"
+                  >
+                    Connect
+                  </button>
+                </div>
+              </details>
             </div>
           )}
 
