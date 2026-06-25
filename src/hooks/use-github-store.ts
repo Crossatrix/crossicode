@@ -1,7 +1,11 @@
 import { useCallback, useEffect, useState } from "react";
 import type { GitHubRepo } from "../lib/github/types";
+import {
+  getMyInstallation,
+  removeInstallation,
+  saveInstallation,
+} from "../lib/github.functions";
 
-const TOKEN_KEY = "gh-token";
 const STATE_KEY = "gh-state";
 const BASE_FILES_KEY = "gh-base-files";
 
@@ -9,6 +13,11 @@ export interface GitHubPersistedState {
   repo: GitHubRepo | null;
   branch: string | null;
   baseCommitSha: string | null;
+}
+
+export interface GitHubConnection {
+  installationId: number;
+  accountLogin: string;
 }
 
 function loadState(): GitHubPersistedState {
@@ -30,9 +39,8 @@ function loadBaseFiles(): Record<string, string> {
 }
 
 export function useGitHubStore() {
-  const [token, setTokenState] = useState(() =>
-    typeof window === "undefined" ? "" : localStorage.getItem(TOKEN_KEY) || ""
-  );
+  const [connection, setConnection] = useState<GitHubConnection | null>(null);
+  const [connectionLoaded, setConnectionLoaded] = useState(false);
   const [state, setState] = useState<GitHubPersistedState>(loadState);
   const [baseFiles, setBaseFilesState] = useState<Record<string, string>>(loadBaseFiles);
 
@@ -42,16 +50,33 @@ export function useGitHubStore() {
     } catch {}
   }, [state]);
 
-  const setToken = useCallback((t: string) => {
-    setTokenState(t);
+  const refreshConnection = useCallback(async () => {
     try {
-      localStorage.setItem(TOKEN_KEY, t);
-    } catch {}
+      const res = await getMyInstallation();
+      setConnection(res);
+    } catch {
+      setConnection(null);
+    } finally {
+      setConnectionLoaded(true);
+    }
   }, []);
 
-  const setRepo = useCallback((repo: GitHubRepo | null, branch: string | null, sha: string | null) => {
-    setState({ repo, branch, baseCommitSha: sha });
+  useEffect(() => {
+    refreshConnection();
+  }, [refreshConnection]);
+
+  const connectInstallation = useCallback(async (installationId: number) => {
+    const res = await saveInstallation({ data: { installationId } });
+    setConnection({ installationId: res.installationId, accountLogin: res.accountLogin });
+    return res;
   }, []);
+
+  const setRepo = useCallback(
+    (repo: GitHubRepo | null, branch: string | null, sha: string | null) => {
+      setState({ repo, branch, baseCommitSha: sha });
+    },
+    []
+  );
 
   const setBranch = useCallback((branch: string, sha: string) => {
     setState((s) => ({ ...s, branch, baseCommitSha: sha }));
@@ -65,13 +90,14 @@ export function useGitHubStore() {
     setBaseFilesState(files);
     try {
       localStorage.setItem(BASE_FILES_KEY, JSON.stringify(files));
-    } catch (e) {
-      // quota — store empty marker
-      try { localStorage.removeItem(BASE_FILES_KEY); } catch {}
+    } catch {
+      try {
+        localStorage.removeItem(BASE_FILES_KEY);
+      } catch {}
     }
   }, []);
 
-  const disconnect = useCallback(() => {
+  const disconnectRepo = useCallback(() => {
     setState({ repo: null, branch: null, baseCommitSha: null });
     setBaseFilesState({});
     try {
@@ -80,9 +106,25 @@ export function useGitHubStore() {
     } catch {}
   }, []);
 
+  const disconnectApp = useCallback(async () => {
+    try {
+      await removeInstallation();
+    } catch {}
+    setConnection(null);
+    disconnectRepo();
+  }, [disconnectRepo]);
+
   return {
-    token,
-    setToken,
+    // App connection
+    connection,
+    connectionLoaded,
+    refreshConnection,
+    connectInstallation,
+    disconnectApp,
+    // Back-compat: many existing helpers expect `.token`. With the GitHub App
+    // proxy, no token is ever needed on the client; pass through an empty string.
+    token: "",
+    // Repo state
     repo: state.repo,
     branch: state.branch,
     baseCommitSha: state.baseCommitSha,
@@ -91,6 +133,6 @@ export function useGitHubStore() {
     setBranch,
     setBaseSha,
     setBaseFiles,
-    disconnect,
+    disconnect: disconnectRepo,
   };
 }
