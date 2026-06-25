@@ -1,101 +1,124 @@
-## GitHub 2-Way Sync — Plan
+## Real 2-way GitHub Sync via GitHub App
 
-Add full GitHub integration to the in-browser editor: clone any repo, edit, commit & push, pull updates, manage branches, open PRs, and resolve conflicts. Auth via Personal Access Token (PAT).
+Replace the Personal Access Token flow with a single shared "Lovable Sync" GitHub App that users install on their repos. The browser never sees a private key — a server function mints short-lived installation access tokens on demand.
 
-### What the user gets
+### What the user experiences
 
-- **GitHub button** in the top bar opens a "GitHub" dialog
-- **Token setup** — paste a PAT (with `repo` scope), stored in localStorage
-- **Clone repo** — paste `owner/repo` URL or pick from "My repos" list, choose branch, loads files into editor
-- **Branch bar** below top bar shows: current repo · branch dropdown · "↓ Pull" · "↑ Commit & Push" · "Open PR" · status badge ("clean" / "N changes" / "behind remote")
-- **Commit dialog** — message field, list of changed files with checkboxes, push button
-- **Pull / fetch** — manual button; on opening a project also auto-fetches and shows "behind by N commits" badge
-- **Branch management** — switch branch (warns if dirty), create new branch from current
-- **Pull Request** — title + body + base branch; opens PR via API, shows link
-- **Conflict resolution UI** — when remote file differs from local base, show 3-pane (base / yours / theirs) with "keep mine", "take theirs", or manual merge in editor
+- "Connect GitHub" button → opens `github.com/apps/lovable-sync/installations/new` in a new tab
+- They pick which repos to grant access to, GitHub redirects back to `/github/callback?installation_id=...`
+- Callback saves the `installation_id` to their account row in the DB
+- Repo picker now lists only repos the App can see for that installation
+- Clone / commit / pull / branch / PR flows work exactly like today, but every GitHub API call goes through `ghCall()` server function that injects a fresh installation token
+- Commits are authored as the **Lovable Sync App** (per your choice). PRs are opened by the app.
+- Optional background poll every 30s (toggle in UI) calls `getBranchHead` to show "behind by N" badge; manual Pull still does the work.
+
+### One-time setup (you do this, once)
+
+1. Register a GitHub App at `github.com/settings/apps/new`:
+   - Name: `Lovable Sync` (or whatever)
+   - Homepage URL: your published URL
+   - Callback URL: `https://<published>/github/callback`
+   - Webhook: **disabled** (no realtime per your choice)
+   - Permissions: `Contents: Read & Write`, `Pull requests: Read & Write`, `Metadata: Read`
+   - Where can this be installed: Any account
+2. After creation, GitHub gives you: **App ID**, **Client ID**, and a downloadable **private key** (`.pem`)
+3. Lovable stores three secrets: `GITHUB_APP_ID`, `GITHUB_APP_CLIENT_ID`, `GITHUB_APP_PRIVATE_KEY` (PEM contents)
+
+The plan will prompt for these via `add_secret` at the right moment.
 
 ### Architecture
 
 ```text
-src/lib/github/
-  client.ts          # fetch wrapper for api.github.com with PAT
-  repo.ts            # clone, listBranches, listRepos, getTree, getBlob
-  commit.ts          # createCommit (tree + commit + update ref)
-  pull.ts            # fetch latest, diff against local base
-  pr.ts              # createPullRequest, listPullRequests
-  merge.ts           # 3-way diff helpers (use 'diff3' lib)
-  types.ts           # GitHubRepo, Branch, CommitInfo, FileChange, Conflict
+DB:
+  github_installations            -- one row per user
+    user_id (FK auth.users, PK)
+    installation_id (bigint)
+    account_login (text)          -- "octocat" or "my-org"
+    installed_at, updated_at
 
-src/components/github/
-  GitHubDialog.tsx          # main hub: token, repo picker, clone
-  GitHubBranchBar.tsx       # always-visible status bar when repo connected
-  CommitDialog.tsx          # stage + message + push
-  PullResultDialog.tsx      # shows incoming changes / conflicts
-  ConflictResolver.tsx      # per-file 3-pane resolver
-  CreatePRDialog.tsx        # PR title/body/base
-  TokenSetup.tsx            # PAT input + scope guide + test connection
+Server (TanStack server functions, all .middleware([requireSupabaseAuth])):
+  src/lib/github-app/jwt.server.ts        -- sign App JWT (RS256) with private key
+  src/lib/github-app/token.server.ts      -- mint + cache installation tokens (10min TTL, in-memory per worker)
+  src/lib/github-app/installation.server.ts -- list repos for installation
+  src/lib/github.functions.ts             -- single ghCall({path, method, body}) server fn
+                                             — looks up user's installation_id,
+                                               mints token, proxies the request,
+                                               returns {status, body}
+  src/lib/github-app/callback.functions.ts -- saveInstallation({installation_id})
 
-src/hooks/
-  use-github-store.ts       # repo, branch, baseSha, baseFiles (snapshot at clone/pull), token
+Routes:
+  src/routes/github.callback.tsx          -- reads ?installation_id&setup_action
+                                             calls saveInstallation, redirects to /
+
+Client:
+  src/lib/github/client.ts                -- REPLACE direct fetch with ghCall server fn
+                                             same signature so repo/commit/pull/pr modules
+                                             stay nearly untouched
+  src/hooks/use-github-store.ts           -- drop `token`, add `installationId`, `accountLogin`
+  src/components/GitHubPanel.tsx          -- replace TokenSetup with "Install App" button
+                                             + "Manage installation" link
+                                             + (optional) "Auto-check for updates" toggle
 ```
 
-### Data model (added to editor store + localStorage)
+### Server-side token flow
+
+1. App JWT: sign `{iat, exp: iat+540, iss: GITHUB_APP_ID}` with RS256 using `GITHUB_APP_PRIVATE_KEY`. Use Web Crypto (`crypto.subtle.importKey` + `sign`) — works in the Worker runtime, no Node-only crypto.
+2. `POST /app/installations/{installation_id}/access_tokens` with `Authorization: Bearer <app_jwt>` → returns `{token, expires_at}`
+3. Cache `{token, expires_at}` per `installation_id` in a module-scope `Map` until 60s before expiry
+4. `ghCall` uses that token as `Authorization: Bearer <inst_token>`
+
+### Client refactor (minimal)
+
+Today `src/lib/github/client.ts::gh()` does `fetch("https://api.github.com" + path, {Authorization: Bearer ${token}})`. Change it to:
 
 ```ts
-interface GitHubState {
-  token: string;
-  repo: { owner: string; name: string; defaultBranch: string } | null;
-  branch: string | null;
-  baseCommitSha: string | null;        // last sync point
-  baseFiles: Record<string,string>;    // file snapshots at baseCommitSha — for diff & conflict detection
+export async function gh<T>(_unused: string, path: string, init?: RequestInit): Promise<T> {
+  const res = await ghCall({ data: { path, method: init?.method ?? "GET", body: init?.body as string | undefined } });
+  if (res.status >= 400) throw new GitHubError(res.status, res.message);
+  return res.body as T;
 }
 ```
 
-Diff = compare current `files` vs `baseFiles`. Push creates a commit on top of `baseCommitSha`; if remote head moved, surface as "behind — pull first".
+The first parameter (token) becomes unused — kept so `repo.ts`, `commit.ts`, `pull.ts`, `pr.ts` don't change. Later we can drop it.
 
-### How sync works (no real git, pure REST API)
+`useGitHubStore` drops `token`, gains `installationId` + `accountLogin`. `disconnect()` clears the DB row via a `removeInstallation` server fn (and tells the user to uninstall via GitHub for full revocation).
 
-- **Clone**: `GET /repos/{o}/{r}/git/trees/{branch}?recursive=1` → fetch each blob via `GET /git/blobs/{sha}` (base64 decode). Save to editor + `baseFiles`.
-- **Push**: 
-  1. For each changed file: `POST /git/blobs` → get sha
-  2. `POST /git/trees` with base_tree = current head tree, modifications + deletions
-  3. `POST /git/commits` with parents = [head sha], message
-  4. `PATCH /git/refs/heads/{branch}` to new commit sha (fails if remote moved → trigger pull-first flow)
-- **Pull**: Fetch remote head; for each file changed remotely:
-  - Not changed locally → take remote
-  - Changed locally + same content → no-op
-  - Changed locally + different → **conflict**, queue for `ConflictResolver`
-- **Branches**: `GET /repos/.../branches`, `POST /git/refs` to create
-- **PRs**: `POST /repos/.../pulls` with title, body, head, base
+### Install / callback flow
 
-### Conflict resolution
+- "Connect" button: `window.open(\`https://github.com/apps/${SLUG}/installations/new?state=${csrf}\`, "_blank")`
+- App redirects browser to `https://<site>/github/callback?installation_id=123&setup_action=install&state=<csrf>`
+- Route component validates state, calls `saveInstallation({installation_id})`, then `navigate({to:"/"})`
+- App slug is public; expose via `import.meta.env.VITE_GITHUB_APP_SLUG` (read from a non-secret env var, or hardcoded).
 
-Use the `diff3` npm package (tiny, browser-safe, pure JS) to produce a merged file with `<<<<<<<` markers when auto-merge fails. UI shows per-file: "Keep mine", "Take theirs", or "Edit manually" (opens in editor with markers; user removes markers and clicks resolved).
+### Polling (optional, off by default)
 
-### Security notes
+- `useEffect` in `GitHubPanel`: every 30s while connected + tab visible → call `getBranchHead`, compare to `baseCommitSha`, update "behind by N" badge. No auto-pull.
 
-- PAT is sensitive but stays in user's browser (localStorage) — same model as the existing OpenRouter API key. Add a clear warning + "use fine-grained PAT scoped to one repo" guidance in `TokenSetup`.
-- All GitHub calls are direct from browser → `api.github.com` (CORS-allowed). No backend needed.
-- Optional later: store encrypted token in cloud `projects` row for cross-device.
+### Edge cases
 
-### Dependencies to add
+- User installs App on a different account than the one repo-picker shows → list installations: `GET /user/installations` won't work (that's user-to-server). Instead list repos via `GET /installation/repositories` with the installation token; show `account_login` so user knows whose repos these are. Support multiple installations later (v2).
+- Token expired mid-request → cache miss → mint new one transparently.
+- Non-fast-forward push → same UX as today ("Remote has new commits. Pull first.").
+- Uninstalled on GitHub → next call 404s → UI says "App was uninstalled. Reconnect."
 
-- `diff3` (~3KB) for 3-way merge
-- `@octokit/rest` is tempting but adds 80KB; prefer plain `fetch` wrappers for size
+### Migration from PAT
+
+On first load after this ships: if `localStorage["gh-token"]` exists but no installation row → show banner "GitHub PAT mode is deprecated, install the Lovable Sync App". Keep PAT code path behind a feature flag for one release, then delete.
 
 ### Out of scope (v1)
 
-- Submodules, LFS, large binary files (>1MB skipped with warning)
-- Force push, rebase, cherry-pick
-- Webhook-based realtime updates (no backend)
-- OAuth login (PAT only, per your choice)
+- Webhooks / realtime push (you said no)
+- User-to-server OAuth (commits will be authored as the App, not the human)
+- Multiple installations per user
+- GitHub Enterprise Server (api.github.com only)
 
 ### Build order
 
-1. Token setup + GitHub API client + repo listing
-2. Clone repo into editor + branch bar UI
-3. Commit & push (manual button)
-4. Pull + change detection
-5. Conflict resolver
-6. Branch switching & creation
-7. Pull request creation
+1. Add `github_installations` table + RLS + GRANTs (migration)
+2. Request secrets: `GITHUB_APP_ID`, `GITHUB_APP_PRIVATE_KEY`, plus public `VITE_GITHUB_APP_SLUG` in `.env`
+3. Server-side JWT signer + token cache + `ghCall` server fn
+4. `/github/callback` route + `saveInstallation` server fn
+5. Refactor `src/lib/github/client.ts` to proxy through `ghCall`; drop `token` from store
+6. Rewrite `GitHubPanel` setup screen (Install button + installation status); keep sync/conflict/PR UI as-is
+7. Optional polling toggle
+8. Remove PAT code path
