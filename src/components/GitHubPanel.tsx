@@ -262,10 +262,29 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
 
   // Load branches when on main
   useEffect(() => {
-    if (mode === "main" && gh_.repo && gh_.token && branches.length === 0) {
+    if (mode === "main" && gh_.repo && gh_.connection && branches.length === 0) {
       listBranches(gh_.token, gh_.repo.owner, gh_.repo.name).then(setBranches).catch(() => {});
     }
-  }, [mode, gh_.repo, gh_.token, branches.length]);
+  }, [mode, gh_.repo, gh_.connection, branches.length]);
+
+  // Auto-switch to main once the GitHub App becomes connected (e.g. after the
+  // install popup posts back and the connection is refreshed).
+  useEffect(() => {
+    if (gh_.connection && mode === "connect") {
+      setMode(gh_.repo ? "main" : "clone");
+    }
+  }, [gh_.connection, mode, gh_.repo]);
+
+  // Listen for the install callback (postMessage from /github/callback).
+  useEffect(() => {
+    const onMsg = (e: MessageEvent) => {
+      if (e.data && e.data.type === "github-app-installed") {
+        gh_.refreshConnection();
+      }
+    };
+    window.addEventListener("message", onMsg);
+    return () => window.removeEventListener("message", onMsg);
+  }, [gh_]);
 
   return (
     <div className="fixed inset-0 z-50 bg-black/60 flex items-center justify-center p-4">
