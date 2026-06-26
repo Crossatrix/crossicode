@@ -31,6 +31,8 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
 
   // app install
   const [manualInstallId, setManualInstallId] = useState("");
+  const [appInstalls, setAppInstalls] = useState<Array<{ id: number; accountLogin: string; accountType: string }> | null>(null);
+
 
   // clone
   const [repoInput, setRepoInput] = useState("");
