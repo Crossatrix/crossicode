@@ -392,8 +392,8 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
                 </div>
               )}
 
-              </div>
               <details className="text-[11px] text-muted-foreground">
+
                 <summary className="cursor-pointer">Have an installation ID? Connect manually</summary>
                 <div className="flex gap-2 mt-2">
                   <input
