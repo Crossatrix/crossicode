@@ -6,7 +6,9 @@ import { listMyRepos, listBranches, cloneRepo, getBranchHead, getRepoMeta } from
 import { commitAndPush, diffFiles } from "../lib/github/commit";
 import { pullFromRemote } from "../lib/github/pull";
 import { createBranch, createPullRequest } from "../lib/github/pr";
+import { listAppInstallations } from "../lib/github.functions";
 import type { GitHubRepoListItem, BranchInfo, PullResult, ConflictFile } from "../lib/github/types";
+
 
 interface Props {
   files: Record<string, string>;
