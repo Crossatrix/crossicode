@@ -163,6 +163,14 @@ function Index() {
             onLoad={store.importFiles}
           />
         )}
+        {githubOpen && (
+          <GitHubPanel
+            files={store.files}
+            onClose={() => setGithubOpen(false)}
+            onImportFiles={store.importFiles}
+            onPatchFiles={handlePatchFiles}
+          />
+        )}
       </div>
     );
   }
