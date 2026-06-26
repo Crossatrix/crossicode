@@ -64,3 +64,48 @@ export async function getInstallationAccount(installationId: number): Promise<st
   const json = (await res.json()) as { account?: { login?: string; slug?: string } };
   return json.account?.login || json.account?.slug || "unknown";
 }
+
+export interface AppInstallationSummary {
+  id: number;
+  accountLogin: string;
+  accountType: string;
+  targetType: string;
+}
+
+export async function listAppInstallations(): Promise<AppInstallationSummary[]> {
+  const { appId, privateKey } = getEnv();
+  const jwt = await signAppJwt(appId, privateKey);
+  const results: AppInstallationSummary[] = [];
+  let page = 1;
+  while (true) {
+    const res = await fetch(`https://api.github.com/app/installations?per_page=100&page=${page}`, {
+      headers: {
+        Accept: "application/vnd.github+json",
+        Authorization: `Bearer ${jwt}`,
+        "X-GitHub-Api-Version": "2022-11-28",
+      },
+    });
+    if (!res.ok) {
+      const body = await res.text().catch(() => "");
+      throw new Error(`Failed to list installations (${res.status}): ${body}`);
+    }
+    const rows = (await res.json()) as Array<{
+      id: number;
+      account?: { login?: string; slug?: string; type?: string };
+      target_type?: string;
+    }>;
+    for (const r of rows) {
+      results.push({
+        id: r.id,
+        accountLogin: r.account?.login || r.account?.slug || "unknown",
+        accountType: r.account?.type || "",
+        targetType: r.target_type || "",
+      });
+    }
+    if (rows.length < 100) break;
+    page++;
+    if (page > 10) break;
+  }
+  return results;
+}
+

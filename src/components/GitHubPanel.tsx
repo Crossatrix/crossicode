@@ -6,7 +6,9 @@ import { listMyRepos, listBranches, cloneRepo, getBranchHead, getRepoMeta } from
 import { commitAndPush, diffFiles } from "../lib/github/commit";
 import { pullFromRemote } from "../lib/github/pull";
 import { createBranch, createPullRequest } from "../lib/github/pr";
+import { listAppInstallations } from "../lib/github.functions";
 import type { GitHubRepoListItem, BranchInfo, PullResult, ConflictFile } from "../lib/github/types";
+
 
 interface Props {
   files: Record<string, string>;
@@ -29,6 +31,8 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
 
   // app install
   const [manualInstallId, setManualInstallId] = useState("");
+  const [appInstalls, setAppInstalls] = useState<Array<{ id: number; accountLogin: string; accountType: string }> | null>(null);
+
 
   // clone
   const [repoInput, setRepoInput] = useState("");
@@ -92,8 +96,21 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
 
   const refreshAfterInstall = () => wrap(async () => {
     await gh_.refreshConnection();
-    // also try to pull installation_id from URL params if present
   });
+
+  const loadAppInstalls = () => wrap(async () => {
+    const rows = await listAppInstallations();
+    setAppInstalls(rows);
+    if (rows.length === 0) {
+      throw new Error("No installations found. Click Install GitHub App first, then come back.");
+    }
+  });
+
+  const pickInstall = (id: number) => wrap(async () => {
+    await gh_.connectInstallation(id);
+    setMode(gh_.repo ? "main" : "clone");
+  });
+
 
   // --- CLONE ---
   const loadMyRepos = () => wrap(async () => {
@@ -348,8 +365,35 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
                 >
                   <RefreshCw className="h-3 w-3" /> I've installed it
                 </button>
+                <button
+                  onClick={loadAppInstalls}
+                  disabled={busy}
+                  className="px-3 py-1.5 bg-[#313244] hover:bg-[#414155] text-xs rounded flex items-center gap-1.5"
+                >
+                  Pick from my installations
+                </button>
               </div>
+              {appInstalls && appInstalls.length > 0 && (
+                <div className="border border-[#313244] rounded">
+                  <div className="px-2 py-1 text-[10px] text-muted-foreground border-b border-[#313244]">
+                    Select the account that installed the app:
+                  </div>
+                  {appInstalls.map((i) => (
+                    <button
+                      key={i.id}
+                      onClick={() => pickInstall(i.id)}
+                      disabled={busy}
+                      className="w-full text-left px-2 py-1.5 hover:bg-accent/50 text-xs border-b border-[#313244] last:border-0 flex items-center justify-between"
+                    >
+                      <span><b>{i.accountLogin}</b> <span className="text-muted-foreground">({i.accountType || "?"})</span></span>
+                      <span className="text-[10px] text-muted-foreground">#{i.id}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
               <details className="text-[11px] text-muted-foreground">
+
                 <summary className="cursor-pointer">Have an installation ID? Connect manually</summary>
                 <div className="flex gap-2 mt-2">
                   <input
