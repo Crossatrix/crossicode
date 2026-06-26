@@ -114,3 +114,11 @@ export const getMyInstallation = createServerFn({ method: "GET" })
       accountLogin: data.account_login as string,
     };
   });
+
+export const listAppInstallations = createServerFn({ method: "GET" })
+  .middleware([requireSupabaseAuth])
+  .handler(async () => {
+    const { listAppInstallations: list } = await import("./github-app/token.server");
+    return await list();
+  });
+
