@@ -365,6 +365,33 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
                 >
                   <RefreshCw className="h-3 w-3" /> I've installed it
                 </button>
+                <button
+                  onClick={loadAppInstalls}
+                  disabled={busy}
+                  className="px-3 py-1.5 bg-[#313244] hover:bg-[#414155] text-xs rounded flex items-center gap-1.5"
+                >
+                  Pick from my installations
+                </button>
+              </div>
+              {appInstalls && appInstalls.length > 0 && (
+                <div className="border border-[#313244] rounded">
+                  <div className="px-2 py-1 text-[10px] text-muted-foreground border-b border-[#313244]">
+                    Select the account that installed the app:
+                  </div>
+                  {appInstalls.map((i) => (
+                    <button
+                      key={i.id}
+                      onClick={() => pickInstall(i.id)}
+                      disabled={busy}
+                      className="w-full text-left px-2 py-1.5 hover:bg-accent/50 text-xs border-b border-[#313244] last:border-0 flex items-center justify-between"
+                    >
+                      <span><b>{i.accountLogin}</b> <span className="text-muted-foreground">({i.accountType || "?"})</span></span>
+                      <span className="text-[10px] text-muted-foreground">#{i.id}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+
               </div>
               <details className="text-[11px] text-muted-foreground">
                 <summary className="cursor-pointer">Have an installation ID? Connect manually</summary>
