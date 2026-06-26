@@ -123,20 +123,34 @@ function Index() {
             </p>
           </div>
           <ZipUploader onFilesLoaded={store.importFiles} />
-          <div className="text-center">
+          <div className="flex flex-col items-center gap-2 text-xs">
             {user ? (
               <button
                 onClick={() => setCloudOpen(true)}
-                className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1"
+                className="text-blue-400 hover:underline inline-flex items-center gap-1"
               >
                 <Cloud className="h-3 w-3" /> Load from cloud
               </button>
             ) : (
               <button
                 onClick={() => setAuthOpen(true)}
-                className="text-xs text-blue-400 hover:underline inline-flex items-center gap-1"
+                className="text-blue-400 hover:underline inline-flex items-center gap-1"
               >
                 <LogIn className="h-3 w-3" /> Sign in to sync projects (optional)
+              </button>
+            )}
+            <button
+              onClick={() => setGithubOpen(true)}
+              className="text-blue-400 hover:underline inline-flex items-center gap-1"
+            >
+              <GitBranch className="h-3 w-3" /> Clone from GitHub
+            </button>
+            {!isInstalled && (
+              <button
+                onClick={handleInstall}
+                className="text-blue-400 hover:underline inline-flex items-center gap-1"
+              >
+                <Smartphone className="h-3 w-3" /> Install as app
               </button>
             )}
           </div>
@@ -147,6 +161,14 @@ function Index() {
             files={store.files}
             onClose={() => setCloudOpen(false)}
             onLoad={store.importFiles}
+          />
+        )}
+        {githubOpen && (
+          <GitHubPanel
+            files={store.files}
+            onClose={() => setGithubOpen(false)}
+            onImportFiles={store.importFiles}
+            onPatchFiles={handlePatchFiles}
           />
         )}
       </div>
