@@ -96,8 +96,21 @@ export function GitHubPanel({ files, onClose, onImportFiles, onPatchFiles }: Pro
 
   const refreshAfterInstall = () => wrap(async () => {
     await gh_.refreshConnection();
-    // also try to pull installation_id from URL params if present
   });
+
+  const loadAppInstalls = () => wrap(async () => {
+    const rows = await listAppInstallations();
+    setAppInstalls(rows);
+    if (rows.length === 0) {
+      throw new Error("No installations found. Click Install GitHub App first, then come back.");
+    }
+  });
+
+  const pickInstall = (id: number) => wrap(async () => {
+    await gh_.connectInstallation(id);
+    setMode(gh_.repo ? "main" : "clone");
+  });
+
 
   // --- CLONE ---
   const loadMyRepos = () => wrap(async () => {
